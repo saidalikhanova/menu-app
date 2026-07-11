@@ -337,6 +337,20 @@ const $=s=>document.querySelector(s);
 const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function normLink(v){
+  v=(v||'').trim();if(!v)return null;
+  if(!/^https?:\/\//i.test(v))v='https://'+v;
+  try{const u=new URL(v);return ['http:','https:'].includes(u.protocol)?u.href:null;}catch(e){return null;}
+}
+function linkLabel(link){
+  try{const h=new URL(link).hostname.replace(/^www\./,'');
+    if(h.includes('instagram'))return '📸 Открыть в Instagram';
+    if(h.includes('youtube')||h.includes('youtu.be'))return '▶️ Смотреть на YouTube';
+    if(h.includes('tiktok'))return '🎵 Открыть в TikTok';
+    if(h.includes('t.me')||h.includes('telegram'))return '✈️ Открыть в Telegram';
+    return '🔗 Открыть источник ('+h+')';
+  }catch(e){return '🔗 Открыть ссылку';}
+}
 
 /* resize image -> compressed dataURL */
 function fileToPhoto(file){return new Promise((res)=>{
@@ -410,7 +424,13 @@ function openDetail(id){
     b.appendChild(el('h3','sec','Приготовление'));
     const ol=el('ol','steps');r.steps.split(/\n+/).filter(s=>s.trim()).forEach(s=>ol.appendChild(el('li',null,esc(s.replace(/^\d+[\.\)]\s*/,'')))));b.appendChild(ol);
   }
-  const editBtn=el('button','btn ghost','✏️ Редактировать');editBtn.style.marginTop='24px';editBtn.onclick=()=>openEditor(r);
+  if(r.link){
+    const a=el('a','btn ghost',linkLabel(r.link));
+    a.href=r.link;a.target='_blank';a.rel='noopener';
+    a.style.cssText='margin-top:24px;text-decoration:none';
+    b.appendChild(a);
+  }
+  const editBtn=el('button','btn ghost','✏️ Редактировать');editBtn.style.marginTop=r.link?'10px':'24px';editBtn.onclick=()=>openEditor(r);
   const delBtn=el('button','btn ghost','🗑 Удалить рецепт');delBtn.style.cssText='margin-top:10px;color:#c0392b';
   delBtn.onclick=async()=>{if(confirm('Удалить «'+r.name+'»?')){await dbDel(r.id);recipes=recipes.filter(x=>x.id!==r.id);closeSheet();renderRecipes();refreshMenu();updateRecCount();toast('Удалено');}};
   b.appendChild(editBtn);b.appendChild(delBtn);
@@ -439,6 +459,9 @@ function openEditor(r){
     <textarea class="t" id="fSteps" placeholder="Нарезать овощи&#10;Заправить маслом&#10;Посолить по вкусу">${r?esc(r.steps||''):''}</textarea>
     <label class="f">Категории <span style="font-weight:400">(через запятую)</span></label>
     <input class="t" id="fTags" placeholder="салаты, лёгкое, ужин" value="${r?esc((r.tags||[]).join(', ')):''}">
+    <label class="f">Ссылка <span style="font-weight:400">(Instagram, сайт — необязательно)</span></label>
+    <input class="t" id="fLink" type="url" inputmode="url" placeholder="https://www.instagram.com/p/…" value="${r?esc(r.link||''):''}">
+    <div class="hint">В Instagram: откройте пост → «⋯» → «Скопировать ссылку», и вставьте сюда.</div>
     <button class="btn primary" id="saveRecipe" style="margin-top:22px">Сохранить рецепт</button>
   `;
   $('#photoBox').onclick=()=>$('#photoInput').click();
@@ -459,6 +482,7 @@ async function saveRecipe(){
     ingredients:$('#fIng').value.split('\n').map(s=>s.trim()).filter(Boolean),
     steps:$('#fSteps').value.trim(),
     tags:$('#fTags').value.split(',').map(s=>s.trim()).filter(Boolean),
+    link:normLink($('#fLink').value),
   };
   await dbPut(rec);
   const i=recipes.findIndex(x=>x.id===rec.id);
