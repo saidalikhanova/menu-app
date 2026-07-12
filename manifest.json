@@ -1,0 +1,14 @@
+{
+  "name": "Мои Рецепты",
+  "short_name": "Рецепты",
+  "description": "Личная книга рецептов и конструктор меню на неделю",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#faf6f0",
+  "theme_color": "#e8654a",
+  "icons": [
+    { "src": "icon-180.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
