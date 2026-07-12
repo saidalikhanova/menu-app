@@ -446,9 +446,10 @@ function openEditor(r){
   $('#sheetTitle').textContent=r?'Редактировать':'Новый рецепт';
   const b=$('#sheetBody');
   b.innerHTML=`
-    <button class="btn primary" id="aiBtn" style="margin-bottom:8px">🤖 Заполнить из скриншота</button>
-    <div class="hint" style="margin-bottom:14px;text-align:center">или заполните вручную ↓</div>
-    <div class="photobox" id="photoBox">${draftPhoto?`<img src="${draftPhoto}">`:'<div class="ico">📷</div><div>Добавить фото блюда</div>'}</div>
+    <button class="btn primary" id="aiBtn" style="margin-bottom:6px">🤖 Распознать рецепт по фото (ИИ)</button>
+    <div class="hint" style="margin-bottom:14px">Нажмите сюда, если хотите, чтобы название, ингредиенты, шаги и калории заполнились сами по скриншоту рецепта.</div>
+    <div class="divider"><span>или вручную</span></div>
+    <div class="photobox" id="photoBox">${draftPhoto?`<img src="${draftPhoto}">`:'<div class="ico">📷</div><div>Просто добавить фото (без распознавания)</div>'}</div>
     <input type="file" id="photoInput" accept="image/*" hidden>
     <label class="f">Название</label>
     <input class="t" id="fName" placeholder="Напр. Салат с огурцом" value="${r?esc(r.name):''}">
@@ -505,7 +506,15 @@ async function aiImport(){
     try{
       const photo=await fileToPhoto(file);
       const b64=photo.split(',')[1];
-      const prompt='На картинке рецепт блюда (фото или скриншот). Извлеки данные и верни СТРОГО JSON без markdown, без пояснений, по схеме: {"name":"название","kcal":число или null (калорийность на порцию),"servings":число или null,"ingredients":["ингредиент с количеством", ...],"steps":"шаги приготовления, каждый с новой строки","tags":["категория"]}. Пиши по-русски. Если данных нет — null или [].';
+      const prompt='На картинке рецепт блюда (фото готового блюда или скриншот рецепта, например из Instagram). '
+        +'Извлеки данные и верни СТРОГО JSON без markdown и пояснений по схеме:\n'
+        +'{"name":"название блюда","kcal":число,"servings":число или null,"ingredients":["ингредиент с количеством", ...],"steps":"шаги приготовления, каждый с новой строки","tags":["категория", ...]}\n'
+        +'Правила:\n'
+        +'- "kcal" ОБЯЗАТЕЛЬНО должно быть числом на порцию. Если калорийность явно не указана на картинке — САМ оцени её по составу и примерному количеству ингредиентов, используя типичную калорийность продуктов (не пиши null).\n'
+        +'- "ingredients" — каждый ингредиент отдельным элементом массива, с количеством, если оно есть или его можно оценить.\n'
+        +'- "tags" — 1-3 категории по смыслу блюда, например: завтрак, обед, ужин, перекус, салат, десерт, лёгкое, белковое, веганское (выбирай подходящие).\n'
+        +'- Если на фото просто готовое блюдо без подписанного рецепта — восстанови вероятный состав и способ приготовления по внешнему виду.\n'
+        +'- Пиши по-русски.';
       const resp=await fetch('https://api.anthropic.com/v1/messages',{
         method:'POST',
         headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
