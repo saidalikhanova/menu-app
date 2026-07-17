@@ -448,8 +448,9 @@ function openEditor(r){
   b.innerHTML=`
     <button class="btn primary" id="aiBtn" style="margin-bottom:6px">🤖 Распознать рецепт по фото (ИИ)</button>
     <div class="hint" style="margin-bottom:14px">Нажмите сюда, если хотите, чтобы название, ингредиенты, шаги и калории заполнились сами по скриншоту рецепта. Можно выбрать сразу 2–3 фото одного рецепта (например, ингредиенты — на одном, шаги — на другом) — ИИ соберёт их в один рецепт.</div>
-    <div class="divider"><span>или вручную</span></div>
-    <div class="photobox" id="photoBox">${draftPhoto?`<img src="${draftPhoto}">`:'<div class="ico">📷</div><div>Просто добавить фото (без распознавания)</div>'}</div>
+    <div class="divider"><span>фото блюда для обложки</span></div>
+    <div class="photobox" id="photoBox">${draftPhoto?`<img src="${draftPhoto}">`:'<div class="ico">📷</div><div>Добавить фото блюда (обложка)</div>'}</div>
+    <div class="hint" style="margin-top:6px">Это фото попадёт на карточку рецепта. Скриншоты с текстом для распознавания сюда не сохраняются.</div>
     <input type="file" id="photoInput" accept="image/*" hidden>
     <label class="f">Название</label>
     <input class="t" id="fName" placeholder="Напр. Салат с огурцом" value="${r?esc(r.name):''}">
@@ -526,14 +527,14 @@ async function aiImport(){
       const data=await resp.json();
       let txt=data.content[0].text.trim().replace(/^```json?/,'').replace(/```$/,'').trim();
       const rec=JSON.parse(txt);
-      draftPhoto=photos[0];$('#photoBox').innerHTML=`<img src="${photos[0]}">`;
+      // Скриншоты для распознавания НЕ ставим на обложку — фото блюда добавляется отдельно
       $('#fName').value=rec.name||'';
       $('#fKcal').value=rec.kcal||'';
       $('#fServ').value=rec.servings||'';
       $('#fIng').value=(rec.ingredients||[]).join('\n');
       $('#fSteps').value=rec.steps||'';
       $('#fTags').value=(rec.tags||[]).join(', ');
-      toast('Готово! Проверьте и сохраните ✓');
+      toast('Распознано! Добавьте фото блюда и сохраните ✓');
     }catch(err){
       toast('Не удалось распознать: '+err.message);
     }finally{btn.disabled=false;btn.innerHTML=orig;}
