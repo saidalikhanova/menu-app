@@ -447,7 +447,7 @@ function openEditor(r){
   const b=$('#sheetBody');
   b.innerHTML=`
     <button class="btn primary" id="aiBtn" style="margin-bottom:6px">🤖 Распознать рецепт по фото (ИИ)</button>
-    <div class="hint" style="margin-bottom:14px">Нажмите сюда, если хотите, чтобы название, ингредиенты, шаги и калории заполнились сами по скриншоту рецепта.</div>
+    <div class="hint" style="margin-bottom:14px">Нажмите сюда, если хотите, чтобы название, ингредиенты, шаги и калории заполнились сами по скриншоту рецепта. Можно выбрать сразу 2–3 фото одного рецепта (например, ингредиенты — на одном, шаги — на другом) — ИИ соберёт их в один рецепт.</div>
     <div class="divider"><span>или вручную</span></div>
     <div class="photobox" id="photoBox">${draftPhoto?`<img src="${draftPhoto}">`:'<div class="ico">📷</div><div>Просто добавить фото (без распознавания)</div>'}</div>
     <input type="file" id="photoInput" accept="image/*" hidden>
@@ -499,14 +499,16 @@ async function saveRecipe(){
 async function aiImport(){
   const key=LS.get('apiKey','');
   if(!key){toast('Сначала вставьте API-ключ во вкладке «Я»');return;}
-  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
   inp.onchange=async e=>{
-    const file=e.target.files[0];if(!file)return;
-    const btn=$('#aiBtn');const orig=btn.innerHTML;btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Распознаю рецепт…';
+    const files=[...e.target.files].slice(0,4);if(!files.length)return;
+    const btn=$('#aiBtn');const orig=btn.innerHTML;btn.disabled=true;
+    btn.innerHTML='<span class="spinner"></span> Распознаю рецепт'+(files.length>1?' по '+files.length+' фото':'')+'…';
     try{
-      const photo=await fileToPhoto(file);
-      const b64=photo.split(',')[1];
-      const prompt='На картинке рецепт блюда (фото готового блюда или скриншот рецепта, например из Instagram). '
+      const photos=await Promise.all(files.map(fileToPhoto));
+      const imageBlocks=photos.map(p=>({type:'image',source:{type:'base64',media_type:'image/jpeg',data:p.split(',')[1]}}));
+      const multiNote=photos.length>1?' На нескольких картинках — один и тот же рецепт (например, ингредиенты на одной, шаги на другой). Объедини всю информацию из всех картинок в один рецепт, не дублируй.':'';
+      const prompt='На картинке рецепт блюда (фото готового блюда или скриншот рецепта, например из Instagram).'+multiNote+' '
         +'Извлеки данные и верни СТРОГО JSON без markdown и пояснений по схеме:\n'
         +'{"name":"название блюда","kcal":число,"servings":число или null,"ingredients":["ингредиент с количеством", ...],"steps":"шаги приготовления, каждый с новой строки","tags":["категория", ...]}\n'
         +'Правила:\n'
@@ -518,13 +520,13 @@ async function aiImport(){
       const resp=await fetch('https://api.anthropic.com/v1/messages',{
         method:'POST',
         headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
-        body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1500,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},{type:'text',text:prompt}]}]})
+        body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1500,messages:[{role:'user',content:[...imageBlocks,{type:'text',text:prompt}]}]})
       });
       if(!resp.ok){const t=await resp.text();throw new Error(resp.status+' '+t.slice(0,120));}
       const data=await resp.json();
       let txt=data.content[0].text.trim().replace(/^```json?/,'').replace(/```$/,'').trim();
       const rec=JSON.parse(txt);
-      draftPhoto=photo;$('#photoBox').innerHTML=`<img src="${photo}">`;
+      draftPhoto=photos[0];$('#photoBox').innerHTML=`<img src="${photos[0]}">`;
       $('#fName').value=rec.name||'';
       $('#fKcal').value=rec.kcal||'';
       $('#fServ').value=rec.servings||'';
