@@ -139,6 +139,13 @@ textarea.t{min-height:90px;resize:vertical;line-height:1.5}
   cursor:pointer;overflow:hidden;position:relative;
 }
 .photobox img{width:100%;height:100%;object-fit:cover}
+.photo-actions{position:absolute;right:8px;bottom:8px;display:flex;gap:8px}
+.photo-actions button{
+  border:0;border-radius:20px;padding:8px 14px;font-size:13px;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;gap:5px;backdrop-filter:blur(6px);box-shadow:0 2px 8px rgba(0,0,0,.25);
+}
+.photo-actions .replace{background:rgba(255,255,255,.92);color:var(--ink)}
+.photo-actions .remove{background:rgba(0,0,0,.55);color:#fff}
 .photobox .ico{font-size:34px}
 
 /* recipe detail */
@@ -441,6 +448,22 @@ function openDetail(id){
 }
 
 /* ---------------- editor ---------------- */
+function renderPhotoBox(){
+  const box=$('#photoBox');if(!box)return;
+  if(draftPhoto){
+    box.innerHTML=`<img src="${draftPhoto}">
+      <div class="photo-actions">
+        <button type="button" class="replace">🔄 Заменить</button>
+        <button type="button" class="remove">🗑 Удалить</button>
+      </div>`;
+    box.onclick=null;
+    box.querySelector('.replace').onclick=e=>{e.stopPropagation();$('#photoInput').click();};
+    box.querySelector('.remove').onclick=e=>{e.stopPropagation();draftPhoto=null;$('#photoInput').value='';renderPhotoBox();};
+  }else{
+    box.innerHTML='<div class="ico">📷</div><div>Добавить фото блюда (обложка)</div>';
+    box.onclick=()=>$('#photoInput').click();
+  }
+}
 function openEditor(r){
   editingId=r?r.id:null;draftPhoto=r?r.photo:null;
   $('#sheetTitle').textContent=r?'Редактировать':'Новый рецепт';
@@ -449,7 +472,7 @@ function openEditor(r){
     <button class="btn primary" id="aiBtn" style="margin-bottom:6px">🤖 Распознать рецепт по фото (ИИ)</button>
     <div class="hint" style="margin-bottom:14px">Нажмите сюда, если хотите, чтобы название, ингредиенты, шаги и калории заполнились сами по скриншоту рецепта. Можно выбрать сразу 2–3 фото одного рецепта (например, ингредиенты — на одном, шаги — на другом) — ИИ соберёт их в один рецепт.</div>
     <div class="divider"><span>фото блюда для обложки</span></div>
-    <div class="photobox" id="photoBox">${draftPhoto?`<img src="${draftPhoto}">`:'<div class="ico">📷</div><div>Добавить фото блюда (обложка)</div>'}</div>
+    <div class="photobox" id="photoBox"></div>
     <div class="hint" style="margin-top:6px">Это фото попадёт на карточку рецепта. Скриншоты с текстом для распознавания сюда не сохраняются.</div>
     <input type="file" id="photoInput" accept="image/*" hidden>
     <label class="f">Название</label>
@@ -469,8 +492,8 @@ function openEditor(r){
     <div class="hint">В Instagram: откройте пост → «⋯» → «Скопировать ссылку», и вставьте сюда.</div>
     <button class="btn primary" id="saveRecipe" style="margin-top:22px">Сохранить рецепт</button>
   `;
-  $('#photoBox').onclick=()=>$('#photoInput').click();
-  $('#photoInput').onchange=async e=>{if(e.target.files[0]){draftPhoto=await fileToPhoto(e.target.files[0]);$('#photoBox').innerHTML=`<img src="${draftPhoto}">`;}};
+  renderPhotoBox();
+  $('#photoInput').onchange=async e=>{if(e.target.files[0]){draftPhoto=await fileToPhoto(e.target.files[0]);renderPhotoBox();}};
   $('#aiBtn').onclick=aiImport;
   $('#saveRecipe').onclick=saveRecipe;
   openSheet();
