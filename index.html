@@ -200,6 +200,17 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
 .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px)}
 .spinner{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* people */
+.personbar{display:flex;gap:8px;padding:2px 0 12px;overflow-x:auto;scrollbar-width:none}
+.personbar::-webkit-scrollbar{display:none}
+.pbtn{flex:1 0 auto;min-width:86px;display:flex;align-items:center;justify-content:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 12px;cursor:pointer;font-weight:700;font-size:14px;color:var(--muted)}
+.pbtn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.prow{display:flex;gap:8px;align-items:center;margin-top:10px}
+.prow input.t{padding:10px 10px}
+.prow .pe{width:52px;text-align:center;flex:0 0 auto}
+.prow .pn{flex:1;min-width:0}
+.prow .pt{width:82px;flex:0 0 auto}
+.prow .px{background:none;border:0;color:var(--muted);font-size:20px;cursor:pointer;padding:4px;flex:0 0 auto}
 .divider{text-align:center;color:var(--muted);font-size:13px;margin:14px 0;position:relative}
 .divider:before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:var(--line);z-index:0}
 .divider span{background:var(--bg);padding:0 12px;position:relative;z-index:1}
@@ -219,12 +230,14 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b7a99e" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>
         <input id="searchInput" placeholder="Найти рецепт или ингредиент…" autocomplete="off">
       </div>
+      <div class="chips" id="personChips" style="padding-bottom:0"></div>
       <div class="chips" id="tagChips"></div>
       <div id="recipeList"></div>
     </section>
 
     <!-- ================= МЕНЮ ================= -->
     <section class="view" id="view-menu">
+      <div class="personbar" id="personBar"></div>
       <div class="weekbar" id="weekbar"></div>
       <div class="kcalbar">
         <div class="top">
@@ -271,6 +284,13 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
           <option value="750">Быстрый (−0,75 кг/нед)</option>
         </select>
         <button class="btn primary" id="saveProfile" style="margin-top:18px">Сохранить и рассчитать</button>
+      </div>
+      <div class="pcard">
+        <h3>👨‍👩‍👧 Кто ест</h3>
+        <div class="hint">Отмечайте в рецептах, кому подходит блюдо, — и ведите отдельное меню недели для каждого. Норма ккал — необязательно (для вас берётся рассчитанная выше).</div>
+        <div id="peopleList"></div>
+        <div class="hint" style="margin-top:8px">эмодзи · имя · норма ккал</div>
+        <button class="btn ghost" id="addPerson" style="margin-top:12px">＋ Добавить человека</button>
       </div>
       <div class="pcard">
         <h3>🤖 Импорт из скриншота (ИИ)</h3>
@@ -335,12 +355,22 @@ const LS={
 /* ---------------- state ---------------- */
 let recipes=[];
 let profile=LS.get('profile',{});
-let menu=LS.get('menu',{});            // {dayKey:{breakfast:id,lunch:id,dinner:id,snack:id}}
+let people=LS.get('people',null)||[
+  {id:'me',emoji:'🙋',name:'Я',target:null},
+  {id:'kids',emoji:'👧',name:'Дети',target:null},
+  {id:'agzam',emoji:'🧔',name:'Агзам',target:null},
+];
+let menus=LS.get('menus',null);
+if(!menus){menus={};const old=LS.get('menu',null);if(old)menus['me']=old;}   // миграция старого меню → «Я»
+let activePerson=people[0].id;
 let activeDay=0;                        // 0=Пн
-let curTag=null, curSearch='';
-let editingId=null, draftPhoto=null;
+let curTag=null, curPerson=null, curSearch='';
+let editingId=null, draftPhoto=null, draftPeople=[];
 const DOW=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 const SLOTS=[['breakfast','Завтрак','🌅'],['lunch','Обед','🍲'],['dinner','Ужин','🌙'],['snack','Перекус','🍎']];
+function pmenu(){return menus[activePerson]||{};}
+function saveMenus(){LS.set('menus',menus);}
+function personOK(r,pid){const pp=r.people||[];return !pp.length||pp.includes(pid);}   // пусто = для всех
 
 /* ---------------- helpers ---------------- */
 const $=s=>document.querySelector(s);
@@ -384,7 +414,20 @@ function renderChips(){
   const all=el('div','chip'+(curTag?'':' on'),'Все');all.onclick=()=>{curTag=null;renderRecipes();};box.appendChild(all);
   tags.forEach(t=>{const c=el('div','chip'+(curTag===t?' on':''),esc(t));c.onclick=()=>{curTag=curTag===t?null:t;renderRecipes();};box.appendChild(c);});
 }
+function renderPersonChips(){
+  const box=$('#personChips');box.innerHTML='';
+  if(people.length<2){box.style.display='none';return;}
+  box.style.display='flex';
+  const all=el('div','chip'+(curPerson?'':' on'),'Все');
+  all.onclick=()=>{curPerson=null;renderRecipes();};box.appendChild(all);
+  people.forEach(p=>{
+    const c=el('div','chip'+(curPerson===p.id?' on':''),esc((p.emoji||'')+' '+(p.name||'')));
+    c.onclick=()=>{curPerson=curPerson===p.id?null:p.id;renderRecipes();};
+    box.appendChild(c);
+  });
+}
 function matchRecipe(r){
+  if(curPerson&&!personOK(r,curPerson))return false;
   if(curTag&&!(r.tags||[]).includes(curTag))return false;
   if(!curSearch)return true;
   const q=curSearch.toLowerCase();
@@ -392,7 +435,7 @@ function matchRecipe(r){
   return (r.ingredients||[]).some(i=>i.toLowerCase().includes(q));
 }
 function renderRecipes(){
-  renderChips();
+  renderPersonChips();renderChips();
   const list=$('#recipeList');list.innerHTML='';
   const items=recipes.filter(matchRecipe).sort((a,b)=>b.created-a.created);
   if(!recipes.length){
@@ -425,6 +468,9 @@ function openDetail(id){
   if(r.kcal)tl.appendChild(el('span','tag k','🔥 '+r.kcal+' ккал'));
   if(r.servings)tl.appendChild(el('span','tag','🍽 '+r.servings+' порц.'));
   (r.tags||[]).forEach(t=>tl.appendChild(el('span','tag',esc(t))));
+  const rp=r.people||[];
+  if(rp.length)rp.forEach(pid=>{const p=people.find(x=>x.id===pid);if(p)tl.appendChild(el('span','tag',esc((p.emoji||'')+' '+(p.name||''))));});
+  else if(people.length>1)tl.appendChild(el('span','tag','👨‍👩‍👧 для всех'));
   b.appendChild(tl);
   if((r.ingredients||[]).length){
     b.appendChild(el('h3','sec','Ингредиенты'));
@@ -464,8 +510,17 @@ function renderPhotoBox(){
     box.onclick=()=>$('#photoInput').click();
   }
 }
+function renderFPeople(){
+  const box=$('#fPeople');if(!box)return;box.innerHTML='';
+  people.forEach(p=>{
+    const on=draftPeople.includes(p.id);
+    const c=el('div','chip'+(on?' on':''),esc((p.emoji||'')+' '+(p.name||'')));
+    c.onclick=()=>{const i=draftPeople.indexOf(p.id);if(i>=0)draftPeople.splice(i,1);else draftPeople.push(p.id);renderFPeople();};
+    box.appendChild(c);
+  });
+}
 function openEditor(r){
-  editingId=r?r.id:null;draftPhoto=r?r.photo:null;
+  editingId=r?r.id:null;draftPhoto=r?r.photo:null;draftPeople=r?[...(r.people||[])]:[];
   $('#sheetTitle').textContent=r?'Редактировать':'Новый рецепт';
   const b=$('#sheetBody');
   b.innerHTML=`
@@ -487,12 +542,14 @@ function openEditor(r){
     <textarea class="t" id="fSteps" placeholder="Нарезать овощи&#10;Заправить маслом&#10;Посолить по вкусу">${r?esc(r.steps||''):''}</textarea>
     <label class="f">Категории <span style="font-weight:400">(через запятую)</span></label>
     <input class="t" id="fTags" placeholder="салаты, лёгкое, ужин" value="${r?esc((r.tags||[]).join(', ')):''}">
+    <label class="f">Кто это ест <span style="font-weight:400">(не отмечено — подходит всем)</span></label>
+    <div class="chips" id="fPeople" style="padding:2px 0 0"></div>
     <label class="f">Ссылка <span style="font-weight:400">(Instagram, сайт — необязательно)</span></label>
     <input class="t" id="fLink" type="url" inputmode="url" placeholder="https://www.instagram.com/p/…" value="${r?esc(r.link||''):''}">
     <div class="hint">В Instagram: откройте пост → «⋯» → «Скопировать ссылку», и вставьте сюда.</div>
     <button class="btn primary" id="saveRecipe" style="margin-top:22px">Сохранить рецепт</button>
   `;
-  renderPhotoBox();
+  renderPhotoBox();renderFPeople();
   $('#photoInput').onchange=async e=>{if(e.target.files[0]){draftPhoto=await fileToPhoto(e.target.files[0]);renderPhotoBox();}};
   $('#aiBtn').onclick=aiImport;
   $('#saveRecipe').onclick=saveRecipe;
@@ -510,6 +567,7 @@ async function saveRecipe(){
     ingredients:$('#fIng').value.split('\n').map(s=>s.trim()).filter(Boolean),
     steps:$('#fSteps').value.trim(),
     tags:$('#fTags').value.split(',').map(s=>s.trim()).filter(Boolean),
+    people:[...draftPeople],
     link:normLink($('#fLink').value),
   };
   await dbPut(rec);
@@ -567,6 +625,20 @@ async function aiImport(){
 
 /* ---------------- MENU view ---------------- */
 function dayKey(i){return 'd'+i;}
+function personTarget(){
+  const p=people.find(x=>x.id===activePerson)||{};
+  return p.target||(p.id==='me'?(profile.target||0):0);
+}
+function renderPersonBar(){
+  const box=$('#personBar');box.innerHTML='';
+  if(people.length<2){box.style.display='none';return;}
+  box.style.display='flex';
+  people.forEach(p=>{
+    const b=el('div','pbtn'+(p.id===activePerson?' on':''),esc(p.emoji||'')+' <span>'+esc(p.name||'')+'</span>');
+    b.onclick=()=>{activePerson=p.id;refreshMenu();};
+    box.appendChild(b);
+  });
+}
 function renderWeekbar(){
   const w=$('#weekbar');w.innerHTML='';
   DOW.forEach((d,i)=>{
@@ -576,13 +648,13 @@ function renderWeekbar(){
   });
 }
 function dayKcal(i){
-  const m=menu[dayKey(i)]||{};let s=0;
+  const m=pmenu()[dayKey(i)]||{};let s=0;
   SLOTS.forEach(([k])=>{const r=recipes.find(x=>x.id===m[k]);if(r&&r.kcal)s+=r.kcal;});
   return s;
 }
 function renderSlots(){
   const box=$('#slots');box.innerHTML='';
-  const m=menu[dayKey(activeDay)]||{};
+  const m=pmenu()[dayKey(activeDay)]||{};
   SLOTS.forEach(([k,label,emo])=>{
     const slot=el('div','slot');
     slot.appendChild(el('div','lab',`<span>${emo} ${label}</span>`));
@@ -592,7 +664,7 @@ function renderSlots(){
       const im=r.photo?el('img'):el('div','noimg','🍲');if(r.photo)im.src=r.photo;
       p.appendChild(im);
       p.appendChild(el('div','nm',esc(r.name)+`<div class="kc">${r.kcal?r.kcal+' ккал':'ккал —'}</div>`));
-      const del=el('button','del','×');del.onclick=e=>{e.stopPropagation();delete m[k];menu[dayKey(activeDay)]=m;LS.set('menu',menu);refreshMenu();};
+      const del=el('button','del','×');del.onclick=e=>{e.stopPropagation();delete m[k];const mm=menus[activePerson]||{};mm[dayKey(activeDay)]=m;menus[activePerson]=mm;saveMenus();refreshMenu();};
       p.appendChild(del);
       p.onclick=()=>openDetail(r.id);
       slot.appendChild(p);
@@ -603,8 +675,8 @@ function renderSlots(){
   });
 }
 function refreshMenu(){
-  renderWeekbar();renderSlots();
-  const kc=dayKcal(activeDay);const tg=profile.target||0;
+  renderPersonBar();renderWeekbar();renderSlots();
+  const kc=dayKcal(activeDay);const tg=personTarget();
   $('#dayKcal').textContent=kc;
   $('#dayTarget').textContent=tg?tg+' ккал':'—';
   const pct=tg?Math.min(100,Math.round(kc/tg*100)):0;
@@ -615,42 +687,71 @@ function openPicker(slotKey){
   const b=$('#sheetBody');b.innerHTML='';
   const s=el('div','search','<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b7a99e" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>');
   const si=el('input');si.placeholder='Поиск по названию или ингредиенту…';s.appendChild(si);b.appendChild(s);
+  const extraPeople=[];
+  if(people.length>1){
+    const lab=el('div','hint','Добавить это блюдо сразу и для:');lab.style.marginTop='12px';b.appendChild(lab);
+    const row=el('div','chips');row.style.padding='6px 0 0';
+    people.filter(p=>p.id!==activePerson).forEach(p=>{
+      const c=el('div','chip',esc((p.emoji||'')+' '+(p.name||'')));
+      c.onclick=()=>{const i=extraPeople.indexOf(p.id);
+        if(i>=0){extraPeople.splice(i,1);c.classList.remove('on');}
+        else{extraPeople.push(p.id);c.classList.add('on');}};
+      row.appendChild(c);
+    });
+    b.appendChild(row);
+  }
   const list=el('div','picklist');list.style.marginTop='12px';b.appendChild(list);
+  const pri=r=>{const pp=r.people||[];return pp.includes(activePerson)?0:(pp.length?2:1);}; // свои → для всех → чужие
   const draw=()=>{
     list.innerHTML='';const q=si.value.toLowerCase();
-    const items=recipes.filter(r=>!q||r.name.toLowerCase().includes(q)||(r.ingredients||[]).some(i=>i.toLowerCase().includes(q))).sort((a,b)=>b.created-a.created);
+    const items=recipes.filter(r=>!q||r.name.toLowerCase().includes(q)||(r.ingredients||[]).some(i=>i.toLowerCase().includes(q)))
+      .sort((a,b)=>pri(a)-pri(b)||b.created-a.created);
     if(!items.length){list.appendChild(el('div','empty','Нет рецептов. Сначала добавьте их во вкладке «Рецепты».'));return;}
     items.forEach(r=>{
       const pi=el('div','pi');const im=r.photo?el('img'):el('div','noimg','🍲');if(r.photo)im.src=r.photo;
       pi.appendChild(im);
       pi.appendChild(el('div',null,`<div class="nm">${esc(r.name)}</div><div class="mt">${r.kcal?r.kcal+' ккал · ':''}${(r.ingredients||[]).length} ингр.</div>`));
-      pi.onclick=()=>{const m=menu[dayKey(activeDay)]||{};m[slotKey]=r.id;menu[dayKey(activeDay)]=m;LS.set('menu',menu);closeSheet();refreshMenu();toast('Добавлено в меню ✓');};
+      pi.onclick=()=>{
+        [activePerson,...extraPeople].forEach(pid=>{
+          const mm=menus[pid]||{};const md=mm[dayKey(activeDay)]||{};
+          md[slotKey]=r.id;mm[dayKey(activeDay)]=md;menus[pid]=mm;
+        });
+        saveMenus();closeSheet();refreshMenu();
+        toast(extraPeople.length?'Добавлено для '+(extraPeople.length+1)+' чел. ✓':'Добавлено в меню ✓');
+      };
       list.appendChild(pi);
     });
   };
   si.oninput=draw;draw();openSheet();
 }
 
-/* auto-build weight-loss week */
+/* auto-build week for active person */
 function autoBuild(){
-  if(!recipes.length){toast('Сначала добавьте рецепты');return;}
-  const tg=profile.target;
-  if(!tg){toast('Заполните профиль во вкладке «Я»');switchTab('me');return;}
-  const budget={breakfast:tg*0.25,lunch:tg*0.35,dinner:tg*0.30,snack:tg*0.10};
-  const withKcal=recipes.filter(r=>r.kcal);
-  const pool=withKcal.length?withKcal:recipes;
+  const pool0=recipes.filter(r=>personOK(r,activePerson));
+  if(!pool0.length){toast('Нет рецептов для этого человека — отметьте их в рецептах');return;}
+  const p=people.find(x=>x.id===activePerson)||{};
+  const tg=personTarget();
+  if(!tg&&p.id==='me'){toast('Заполните профиль во вкладке «Я»');switchTab('me');return;}
+  const budget=tg?{breakfast:tg*0.25,lunch:tg*0.35,dinner:tg*0.30,snack:tg*0.10}:null;
+  const withKcal=pool0.filter(r=>r.kcal);
+  const pool=(budget&&withKcal.length)?withKcal:pool0;
+  const mm=menus[activePerson]||{};
   for(let i=0;i<7;i++){
     const m={};const used=new Set();
     SLOTS.forEach(([k])=>{
-      const target=budget[k];
-      const cand=pool.filter(r=>!used.has(r.id)).sort((a,b)=>Math.abs((a.kcal||target)-target)-Math.abs((b.kcal||target)-target));
-      const pick=cand[Math.floor(Math.random()*Math.min(3,cand.length))]||pool[Math.floor(Math.random()*pool.length)];
+      let cand=pool.filter(r=>!used.has(r.id));if(!cand.length)cand=pool;
+      let pick;
+      if(budget){
+        const target=budget[k];
+        cand=cand.slice().sort((a,b)=>Math.abs((a.kcal||target)-target)-Math.abs((b.kcal||target)-target));
+        pick=cand[Math.floor(Math.random()*Math.min(3,cand.length))];
+      }else pick=cand[Math.floor(Math.random()*cand.length)];
       if(pick){m[k]=pick.id;used.add(pick.id);}
     });
-    menu[dayKey(i)]=m;
+    mm[dayKey(i)]=m;
   }
-  LS.set('menu',menu);refreshMenu();
-  toast('Меню на неделю собрано ✨');
+  menus[activePerson]=mm;saveMenus();refreshMenu();
+  toast('Меню для «'+(p.name||'')+'» собрано ✨');
 }
 
 /* ---------------- PROFILE ---------------- */
@@ -684,6 +785,33 @@ function renderProfile(){
 }
 function updateRecCount(){$('#recCount').textContent=recipes.length;}
 
+/* ---------------- PEOPLE settings ---------------- */
+function renderPeople(){
+  const box=$('#peopleList');if(!box)return;box.innerHTML='';
+  people.forEach((p,idx)=>{
+    const row=el('div','prow');
+    const pe=el('input','t pe');pe.value=p.emoji||'';pe.maxLength=4;
+    const pn=el('input','t pn');pn.value=p.name||'';pn.placeholder='Имя';
+    const pt=el('input','t pt');pt.type='number';pt.inputMode='numeric';pt.placeholder='ккал';if(p.target)pt.value=p.target;
+    pe.oninput=()=>{p.emoji=pe.value;LS.set('people',people);};
+    pn.oninput=()=>{p.name=pn.value;LS.set('people',people);};
+    pt.oninput=()=>{p.target=parseInt(pt.value)||null;LS.set('people',people);};
+    pe.onchange=pn.onchange=pt.onchange=()=>{renderRecipes();refreshMenu();};
+    const px=el('button','px','×');
+    px.onclick=()=>{
+      if(people.length<=1){toast('Должен остаться хотя бы один человек');return;}
+      if(confirm('Убрать «'+(p.name||'без имени')+'» и его меню?')){
+        people.splice(idx,1);delete menus[p.id];
+        LS.set('people',people);saveMenus();
+        if(activePerson===p.id)activePerson=people[0].id;
+        if(curPerson===p.id)curPerson=null;
+        renderPeople();renderRecipes();refreshMenu();
+      }
+    };
+    row.append(pe,pn,pt,px);box.appendChild(row);
+  });
+}
+
 /* ---------------- navigation ---------------- */
 function switchTab(tab){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
@@ -705,11 +833,15 @@ $('#sheetClose').onclick=closeSheet;$('#sheetBg').onclick=closeSheet;
 $('#fab').onclick=()=>openEditor(null);
 $('#searchInput').oninput=e=>{curSearch=e.target.value.trim();renderRecipes();};
 $('#autoBuild').onclick=autoBuild;
-$('#clearDay').onclick=()=>{if(confirm('Очистить меню на '+DOW[activeDay]+'?')){delete menu[dayKey(activeDay)];LS.set('menu',menu);refreshMenu();}};
+$('#clearDay').onclick=()=>{if(confirm('Очистить меню на '+DOW[activeDay]+'?')){const mm=menus[activePerson]||{};delete mm[dayKey(activeDay)];menus[activePerson]=mm;saveMenus();refreshMenu();}};
+$('#addPerson').onclick=()=>{
+  people.push({id:'p'+Date.now().toString(36),emoji:'🙂',name:'',target:null});
+  LS.set('people',people);renderPeople();renderRecipes();refreshMenu();
+};
 $('#saveProfile').onclick=saveProfile;
 $('#saveKey').onclick=()=>{LS.set('apiKey',$('#apiKey').value.trim());$('#apiKey').value='';toast('Ключ сохранён ✓');};
 $('#exportData').onclick=()=>{
-  const blob=new Blob([JSON.stringify({recipes,profile,menu},null,2)],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({recipes,profile,people,menus},null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='мои-рецепты-'+new Date().toISOString().slice(0,10)+'.json';a.click();
 };
 $('#importData').onclick=()=>$('#importFile').click();
@@ -717,16 +849,19 @@ $('#importFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=ne
   const d=JSON.parse(rd.result);
   if(d.recipes){for(const r of d.recipes)await dbPut(r);}
   if(d.profile)LS.set('profile',d.profile);
-  if(d.menu)LS.set('menu',d.menu);
+  if(d.people)LS.set('people',d.people);
+  if(d.menus)LS.set('menus',d.menus);
+  else if(d.menu)LS.set('menus',{me:d.menu});   // старый формат копии
   location.reload();
 }catch(err){toast('Не удалось прочитать файл');}};rd.readAsText(f);};
 
 /* ---------------- init ---------------- */
 async function init(){
   recipes=await dbAll();
-  profile=LS.get('profile',{});menu=LS.get('menu',{});
+  profile=LS.get('profile',{});
+  LS.set('people',people);saveMenus();   // закрепить дефолт/миграцию
   const jsDay=(new Date().getDay()+6)%7;activeDay=jsDay; // Mon=0
-  renderRecipes();renderProfile();updateRecCount();refreshMenu();
+  renderRecipes();renderProfile();renderPeople();updateRecCount();refreshMenu();
   if(!recipes.length&&!LS.get('seeded',false))seedDemo();
 }
 async function seedDemo(){
