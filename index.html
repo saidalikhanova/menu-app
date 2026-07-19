@@ -693,6 +693,9 @@ function renderPersonBar(){
   const box=$('#personBar');box.innerHTML='';
   if(people.length<2){box.style.display='none';return;}
   box.style.display='flex';
+  const allB=el('div','pbtn'+(activePerson==='all'?' on':''),'👨‍👩‍👧 <span>Все</span>');
+  allB.onclick=()=>{activePerson='all';refreshMenu();};
+  box.appendChild(allB);
   people.forEach(p=>{
     const b=el('div','pbtn'+(p.id===activePerson?' on':''),esc(p.emoji||'')+' <span>'+esc(p.name||'')+'</span>');
     b.onclick=()=>{activePerson=p.id;refreshMenu();};
@@ -712,7 +715,33 @@ function dayKcal(i){
   SLOTS.forEach(([k])=>{const r=recipes.find(x=>x.id===m[k]);if(r&&r.kcal)s+=r.kcal;});
   return s;
 }
+function renderSlotsAll(){
+  const box=$('#slots');box.innerHTML='';
+  SLOTS.forEach(([k,label,emo])=>{
+    const slot=el('div','slot');
+    slot.appendChild(el('div','lab',`<span>${emo} ${label}</span>`));
+    const byRec={};
+    people.forEach(p=>{
+      const m=menus[p.id]||{};const dm=m[dayKey(activeDay)]||{};
+      if(dm[k])(byRec[dm[k]]=byRec[dm[k]]||[]).push(p);
+    });
+    const ids=Object.keys(byRec);
+    if(!ids.length){slot.appendChild(el('div','hint','— ни у кого не выбрано'));box.appendChild(slot);return;}
+    ids.forEach(id=>{
+      const r=recipes.find(x=>x.id===id);if(!r)return;
+      const row=el('div','picked');row.style.marginTop='6px';
+      const im=r.photo?el('img'):el('div','noimg','🍲');if(r.photo)im.src=r.photo;
+      row.appendChild(im);
+      const who=byRec[id].map(x=>x.emoji||'').join(' ');
+      row.appendChild(el('div','nm',esc(r.name)+`<div class="kc">${who}${r.kcal?' · '+r.kcal+' ккал':''}</div>`));
+      row.onclick=()=>openDetail(r.id);
+      slot.appendChild(row);
+    });
+    box.appendChild(slot);
+  });
+}
 function renderSlots(){
+  if(activePerson==='all'){renderSlotsAll();return;}
   const box=$('#slots');box.innerHTML='';
   const m=pmenu()[dayKey(activeDay)]||{};
   SLOTS.forEach(([k,label,emo])=>{
@@ -736,6 +765,11 @@ function renderSlots(){
 }
 function refreshMenu(){
   renderPersonBar();renderWeekbar();renderSlots();
+  const isAll=activePerson==='all';
+  document.querySelector('.kcalbar').style.display=isAll?'none':'block';
+  $('#autoBuild').style.display=isAll?'none':'flex';
+  $('#clearDay').style.display=isAll?'none':'flex';
+  if(isAll)return;
   const kc=dayKcal(activeDay);const tg=personTarget();
   $('#dayKcal').textContent=kc;
   $('#dayTarget').textContent=tg?tg+' ккал':'—';
