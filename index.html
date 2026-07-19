@@ -200,6 +200,11 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
 .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px)}
 .spinner{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* ingredient rows */
+.ingrow{display:flex;gap:8px;align-items:center;margin-top:8px}
+.ingrow .in{flex:1;min-width:0}
+.ingrow .iq{width:108px;flex:0 0 auto}
+.ingrow .ix{background:none;border:0;color:var(--muted);font-size:20px;cursor:pointer;padding:2px;flex:0 0 auto}
 /* shopping */
 .shoprow{display:flex;align-items:center;gap:6px;padding:9px 0;border-bottom:1px solid var(--line)}
 .shoprow:last-child{border-bottom:0}
@@ -388,7 +393,7 @@ if(!menus){menus={};const old=LS.get('menu',null);if(old)menus['me']=old;}   // 
 let activePerson=people[0].id;
 let activeDay=0;                        // 0=Пн
 let curTag=null, curPerson=null, curSearch='';
-let editingId=null, draftPhoto=null, draftPeople=[];
+let editingId=null, draftPhoto=null, draftPeople=[], draftIngs=[];
 const DOW=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 const SLOTS=[['breakfast','Завтрак','🌅'],['lunch','Обед','🍲'],['dinner','Ужин','🌙'],['snack','Перекус','🍎']];
 let shopping=LS.get('shopping',{items:[]});
@@ -401,6 +406,14 @@ const $=s=>document.querySelector(s);
 const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
 function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
 function esc(s){return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function ingObj(i){
+  if(typeof i==='string'){
+    const parts=i.split(/\s*[—–]\s*|\s+-\s+/);
+    return {name:(parts[0]||i).trim(),qty:(parts.slice(1).join(' ')||'').trim()};
+  }
+  return {name:(i&&i.name||'').trim(),qty:(i&&i.qty||'').trim()};
+}
+function ingText(i){const o=ingObj(i);return o.qty?o.name+' — '+o.qty:o.name;}
 function normLink(v){
   v=(v||'').trim();if(!v)return null;
   if(!/^https?:\/\//i.test(v))v='https://'+v;
@@ -456,7 +469,7 @@ function matchRecipe(r){
   if(!curSearch)return true;
   const q=curSearch.toLowerCase();
   if((r.name||'').toLowerCase().includes(q))return true;
-  return (r.ingredients||[]).some(i=>i.toLowerCase().includes(q));
+  return (r.ingredients||[]).some(i=>ingText(i).toLowerCase().includes(q));
 }
 function renderRecipes(){
   renderPersonChips();renderChips();
@@ -498,7 +511,7 @@ function openDetail(id){
   b.appendChild(tl);
   if((r.ingredients||[]).length){
     b.appendChild(el('h3','sec','Ингредиенты'));
-    const ul=el('ul','ing');r.ingredients.forEach(i=>ul.appendChild(el('li',null,'<span>'+esc(i)+'</span>')));b.appendChild(ul);
+    const ul=el('ul','ing');r.ingredients.forEach(i=>{const o=ingObj(i);ul.appendChild(el('li',null,'<span>'+esc(o.name)+(o.qty?' <span style="color:var(--muted)">— '+esc(o.qty)+'</span>':'')+'</span>'));});b.appendChild(ul);
   }
   if(r.steps){
     b.appendChild(el('h3','sec','Приготовление'));
@@ -543,8 +556,31 @@ function renderFPeople(){
     box.appendChild(c);
   });
 }
+function makeIngRow(g){
+  const row=el('div','ingrow');
+  const n=el('input','t in');n.placeholder='Огурец';n.value=g.name||'';
+  const q=el('input','t iq');q.placeholder='2 шт';q.value=g.qty||'';
+  n.oninput=()=>{
+    g.name=n.value;
+    // автодобавление пустой строки, когда заполняют последнюю
+    if(draftIngs.indexOf(g)===draftIngs.length-1&&n.value.trim()){
+      const blank={name:'',qty:''};draftIngs.push(blank);
+      $('#ingRows').appendChild(makeIngRow(blank));
+    }
+  };
+  q.oninput=()=>g.qty=q.value;
+  const x=el('button','ix','×');x.type='button';
+  x.onclick=()=>{const i=draftIngs.indexOf(g);if(i>=0)draftIngs.splice(i,1);renderIngRows();};
+  row.append(n,q,x);return row;
+}
+function renderIngRows(){
+  const box=$('#ingRows');if(!box)return;box.innerHTML='';
+  if(!draftIngs.length)draftIngs.push({name:'',qty:''});
+  draftIngs.forEach(g=>box.appendChild(makeIngRow(g)));
+}
 function openEditor(r){
   editingId=r?r.id:null;draftPhoto=r?r.photo:null;draftPeople=r?[...(r.people||[])]:[];
+  draftIngs=r?(r.ingredients||[]).map(ingObj):[{name:'',qty:''}];
   $('#sheetTitle').textContent=r?'Редактировать':'Новый рецепт';
   const b=$('#sheetBody');
   b.innerHTML=`
@@ -560,8 +596,8 @@ function openEditor(r){
       <div><label class="f">Калорийность, ккал</label><input class="t" id="fKcal" type="number" inputmode="numeric" placeholder="320" value="${r&&r.kcal?r.kcal:''}"></div>
       <div><label class="f">Порций</label><input class="t" id="fServ" type="number" inputmode="numeric" placeholder="2" value="${r&&r.servings?r.servings:''}"></div>
     </div>
-    <label class="f">Ингредиенты <span style="font-weight:400">(каждый с новой строки)</span></label>
-    <textarea class="t" id="fIng" placeholder="Огурец — 2 шт&#10;Помидор — 3 шт&#10;Масло оливковое — 1 ст.л.">${r?esc((r.ingredients||[]).join('\n')):''}</textarea>
+    <label class="f">Ингредиенты <span style="font-weight:400">(название · количество)</span></label>
+    <div id="ingRows"></div>
     <label class="f">Как готовить</label>
     <textarea class="t" id="fSteps" placeholder="Нарезать овощи&#10;Заправить маслом&#10;Посолить по вкусу">${r?esc(r.steps||''):''}</textarea>
     <label class="f">Категории <span style="font-weight:400">(через запятую)</span></label>
@@ -573,7 +609,7 @@ function openEditor(r){
     <div class="hint">В Instagram: откройте пост → «⋯» → «Скопировать ссылку», и вставьте сюда.</div>
     <button class="btn primary" id="saveRecipe" style="margin-top:22px">Сохранить рецепт</button>
   `;
-  renderPhotoBox();renderFPeople();
+  renderPhotoBox();renderFPeople();renderIngRows();
   $('#photoInput').onchange=async e=>{if(e.target.files[0]){draftPhoto=await fileToPhoto(e.target.files[0]);renderPhotoBox();}};
   $('#aiBtn').onclick=aiImport;
   $('#saveRecipe').onclick=saveRecipe;
@@ -588,7 +624,7 @@ async function saveRecipe(){
     name,photo:draftPhoto||null,
     kcal:parseInt($('#fKcal').value)||null,
     servings:parseInt($('#fServ').value)||null,
-    ingredients:$('#fIng').value.split('\n').map(s=>s.trim()).filter(Boolean),
+    ingredients:draftIngs.map(g=>({name:(g.name||'').trim(),qty:(g.qty||'').trim()})).filter(g=>g.name),
     steps:$('#fSteps').value.trim(),
     tags:$('#fTags').value.split(',').map(s=>s.trim()).filter(Boolean),
     people:[...draftPeople],
@@ -616,10 +652,10 @@ async function aiImport(){
       const multiNote=photos.length>1?' На нескольких картинках — один и тот же рецепт (например, ингредиенты на одной, шаги на другой). Объедини всю информацию из всех картинок в один рецепт, не дублируй.':'';
       const prompt='На картинке рецепт блюда (фото готового блюда или скриншот рецепта, например из Instagram).'+multiNote+' '
         +'Извлеки данные и верни СТРОГО JSON без markdown и пояснений по схеме:\n'
-        +'{"name":"название блюда","kcal":число,"servings":число или null,"ingredients":["ингредиент с количеством", ...],"steps":"шаги приготовления, каждый с новой строки","tags":["категория", ...]}\n'
+        +'{"name":"название блюда","kcal":число,"servings":число или null,"ingredients":[{"name":"Огурец","qty":"2 шт"}, ...],"steps":"шаги приготовления, каждый с новой строки","tags":["категория", ...]}\n'
         +'Правила:\n'
         +'- "kcal" ОБЯЗАТЕЛЬНО должно быть числом на порцию. Если калорийность явно не указана на картинке — САМ оцени её по составу и примерному количеству ингредиентов, используя типичную калорийность продуктов (не пиши null).\n'
-        +'- "ingredients" — каждый ингредиент отдельным элементом массива, с количеством, если оно есть или его можно оценить.\n'
+        +'- "ingredients" — каждый ингредиент отдельным объектом: "name" — только название продукта в именительном падеже с большой буквы, без количества; "qty" — количество с единицей (например "2 шт", "300 г", "1 ст.л.", "по вкусу"), или "" если неизвестно.\n'
         +'- "tags" — 1-3 категории по смыслу блюда, например: завтрак, обед, ужин, перекус, салат, десерт, лёгкое, белковое, веганское (выбирай подходящие).\n'
         +'- Если на фото просто готовое блюдо без подписанного рецепта — восстанови вероятный состав и способ приготовления по внешнему виду.\n'
         +'- Пиши по-русски.';
@@ -636,7 +672,7 @@ async function aiImport(){
       $('#fName').value=rec.name||'';
       $('#fKcal').value=rec.kcal||'';
       $('#fServ').value=rec.servings||'';
-      $('#fIng').value=(rec.ingredients||[]).join('\n');
+      draftIngs=(rec.ingredients||[]).map(ingObj);renderIngRows();
       $('#fSteps').value=rec.steps||'';
       $('#fTags').value=(rec.tags||[]).join(', ');
       toast('Распознано! Добавьте фото блюда и сохраните ✓');
@@ -728,7 +764,7 @@ function openPicker(slotKey){
   const pri=r=>{const pp=r.people||[];return pp.includes(activePerson)?0:(pp.length?2:1);}; // свои → для всех → чужие
   const draw=()=>{
     list.innerHTML='';const q=si.value.toLowerCase();
-    const items=recipes.filter(r=>!q||r.name.toLowerCase().includes(q)||(r.ingredients||[]).some(i=>i.toLowerCase().includes(q)))
+    const items=recipes.filter(r=>!q||r.name.toLowerCase().includes(q)||(r.ingredients||[]).some(i=>ingText(i).toLowerCase().includes(q)))
       .sort((a,b)=>pri(a)-pri(b)||b.created-a.created);
     if(!items.length){list.appendChild(el('div','empty','Нет рецептов. Сначала добавьте их во вкладке «Рецепты».'));return;}
     items.forEach(r=>{
@@ -793,13 +829,11 @@ function buildShopping(){
   Object.entries(counts).forEach(([id,n])=>{
     const r=recipes.find(x=>x.id===id);if(!r)return;
     (r.ingredients||[]).forEach(line=>{
-      const parts=line.split(/\s*[—–]\s*|\s+-\s+/);
-      const name=(parts[0]||line).trim();
-      const qty=(parts.slice(1).join(' ')||'').trim();
-      if(!name)return;
-      const key=name.toLowerCase();
-      if(!map[key])map[key]={name,qtys:[]};
-      map[key].qtys.push(qty?qty+(n>1?' ×'+n:''):(n>1?'×'+n:''));
+      const o=ingObj(line);
+      if(!o.name)return;
+      const key=o.name.toLowerCase();
+      if(!map[key])map[key]={name:o.name,qtys:[]};
+      map[key].qtys.push(o.qty?o.qty+(n>1?' ×'+n:''):(n>1?'×'+n:''));
     });
   });
   const items=Object.values(map).map((it,i)=>({id:'s'+Date.now()+'_'+i,name:it.name,qty:it.qtys.filter(Boolean).join(' + '),have:false,done:false,manual:false,section:''}));
