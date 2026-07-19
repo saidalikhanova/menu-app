@@ -766,7 +766,7 @@ function renderSlotsAll(){
       if(dm[k])(byRec[dm[k]]=byRec[dm[k]]||[]).push(p);
     });
     const ids=Object.keys(byRec);
-    if(!ids.length){slot.appendChild(el('div','hint','— ни у кого не выбрано'));box.appendChild(slot);return;}
+    if(!ids.length){slot.appendChild(el('div','hint','Пусто. Чтобы добавить блюдо — выберите вверху 🙋, 👧 или 🧔 (в режиме «Все» меню только просматривается).'));box.appendChild(slot);return;}
     ids.forEach(id=>{
       const r=recipes.find(x=>x.id===id);if(!r)return;
       const row=el('div','picked');row.style.marginTop='6px';
