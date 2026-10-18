@@ -200,6 +200,13 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
 .toast.show{opacity:1;transform:translateX(-50%) translateY(-6px)}
 .spinner{width:18px;height:18px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
 @keyframes spin{to{transform:rotate(360deg)}}
+/* preps */
+.prepb{position:absolute;top:8px;left:8px;background:rgba(255,255,255,.88);font-size:12px;padding:3px 8px;border-radius:20px;font-weight:700}
+.preprow{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px;cursor:pointer}
+.preprow:last-child{border-bottom:0}
+.preprow .nm{font-weight:700}
+.preprow .st{color:var(--accent-2);font-weight:700;white-space:nowrap;font-size:13px}
+.preprow.bad .st{color:var(--accent)}
 /* ingredient rows */
 .ingrow{display:flex;gap:8px;align-items:center;margin-top:8px}
 .ingrow .in{flex:1;min-width:0}
@@ -261,6 +268,7 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
         <button class="wbtn" id="wNext">›</button>
       </div>
       <div class="personbar" id="personBar"></div>
+      <div class="slot" id="prepBar" style="display:none"></div>
       <div class="weekbar" id="weekbar"></div>
       <div class="kcalbar">
         <div class="top">
@@ -413,8 +421,8 @@ if(!weeks){   // миграция: старое одиночное меню ст
 let activeWeek=weekKeyOf(new Date());
 let activePerson=people[0].id;
 let activeDay=0;                        // 0=Пн
-let curTag=null, curPerson=null, curSearch='';
-let editingId=null, draftPhoto=null, draftPeople=[], draftIngs=[];
+let curTag=null, curPerson=null, curSearch='', curPrepFilter=false;
+let editingId=null, draftPhoto=null, draftPeople=[], draftIngs=[], draftPrep=false;
 const DOW=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 const SLOTS=[['breakfast','Завтрак','🌅'],['lunch','Обед','🍲'],['dinner','Ужин','🌙'],['snack','Перекус','🍎']];
 let shopping=LS.get('shopping',{items:[]});
@@ -468,9 +476,15 @@ function allTags(){const s=new Set();recipes.forEach(r=>(r.tags||[]).forEach(t=>
 function renderChips(){
   const box=$('#tagChips');box.innerHTML='';
   const tags=allTags();
-  if(!tags.length){box.style.display='none';return;}
+  const hasPreps=recipes.some(r=>r.prep);
+  if(!tags.length&&!hasPreps){box.style.display='none';return;}
   box.style.display='flex';
-  const all=el('div','chip'+(curTag?'':' on'),'Все');all.onclick=()=>{curTag=null;renderRecipes();};box.appendChild(all);
+  const all=el('div','chip'+(curTag||curPrepFilter?'':' on'),'Все');all.onclick=()=>{curTag=null;curPrepFilter=false;renderRecipes();};box.appendChild(all);
+  if(hasPreps){
+    const pc=el('div','chip'+(curPrepFilter?' on':''),'❄️ Заготовки');
+    pc.onclick=()=>{curPrepFilter=!curPrepFilter;renderRecipes();};
+    box.appendChild(pc);
+  }
   tags.forEach(t=>{const c=el('div','chip'+(curTag===t?' on':''),esc(t));c.onclick=()=>{curTag=curTag===t?null:t;renderRecipes();};box.appendChild(c);});
 }
 function renderPersonChips(){
@@ -486,6 +500,7 @@ function renderPersonChips(){
   });
 }
 function matchRecipe(r){
+  if(curPrepFilter&&!r.prep)return false;
   if(curPerson&&!personOK(r,curPerson))return false;
   if(curTag&&!(r.tags||[]).includes(curTag))return false;
   if(!curSearch)return true;
@@ -508,6 +523,7 @@ function renderRecipes(){
     const ph=el('div','ph');
     if(r.photo)ph.style.backgroundImage=`url(${r.photo})`;else ph.innerHTML='<span class="emoji">🍲</span>';
     if(r.kcal)ph.appendChild(el('div','kcal',r.kcal+' ккал'));
+    if(r.prep)ph.appendChild(el('div','prepb','❄️'));
     card.appendChild(ph);
     card.appendChild(el('div','body',`<p class="name">${esc(r.name)}</p><div class="meta">${(r.ingredients||[]).length} ингр.${r.servings?' · '+r.servings+' порц.':''}</div>`));
     card.onclick=()=>openDetail(r.id);
@@ -527,6 +543,7 @@ function openDetail(id){
   if(r.kcal)tl.appendChild(el('span','tag k','🔥 '+r.kcal+' ккал'));
   if(r.servings)tl.appendChild(el('span','tag','🍽 '+r.servings+' порц.'));
   (r.tags||[]).forEach(t=>tl.appendChild(el('span','tag',esc(t))));
+  if(r.prep)tl.appendChild(el('span','tag k','❄️ заготовка'+(r.prepYield?' · '+r.prepYield+' порц. с партии':'')));
   const rp=r.people||[];
   if(rp.length)rp.forEach(pid=>{const p=people.find(x=>x.id===pid);if(p)tl.appendChild(el('span','tag',esc((p.emoji||'')+' '+(p.name||''))));});
   else if(people.length>1)tl.appendChild(el('span','tag','👨‍👩‍👧 для всех'));
@@ -626,12 +643,27 @@ function openEditor(r){
     <input class="t" id="fTags" placeholder="салаты, лёгкое, ужин" value="${r?esc((r.tags||[]).join(', ')):''}">
     <label class="f">Кто это ест <span style="font-weight:400">(не отмечено — подходит всем)</span></label>
     <div class="chips" id="fPeople" style="padding:2px 0 0"></div>
+    <label class="f">Заготовка <span style="font-weight:400">(готовите впрок на несколько дней?)</span></label>
+    <div class="chips" style="padding:2px 0 0"><div class="chip" id="fPrep">❄️ Это заготовка</div></div>
+    <div id="prepYieldBox" style="display:none">
+      <label class="f">Сколько порций получается с одной партии</label>
+      <input class="t" id="fPrepYield" type="number" inputmode="numeric" placeholder="12">
+      <div class="hint">Порция = один приём пищи одного человека. В меню недели приложение покажет, хватит ли партии.</div>
+    </div>
     <label class="f">Ссылка <span style="font-weight:400">(Instagram, сайт — необязательно)</span></label>
     <input class="t" id="fLink" type="url" inputmode="url" placeholder="https://www.instagram.com/p/…" value="${r?esc(r.link||''):''}">
     <div class="hint">В Instagram: откройте пост → «⋯» → «Скопировать ссылку», и вставьте сюда.</div>
     <button class="btn primary" id="saveRecipe" style="margin-top:22px">Сохранить рецепт</button>
   `;
   renderPhotoBox();renderFPeople();renderIngRows();
+  draftPrep=!!(r&&r.prep);
+  const syncPrep=()=>{
+    $('#fPrep').classList.toggle('on',draftPrep);
+    $('#prepYieldBox').style.display=draftPrep?'block':'none';
+  };
+  if(r&&r.prepYield)$('#fPrepYield').value=r.prepYield;
+  $('#fPrep').onclick=()=>{draftPrep=!draftPrep;syncPrep();};
+  syncPrep();
   $('#photoInput').onchange=async e=>{if(e.target.files[0]){draftPhoto=await fileToPhoto(e.target.files[0]);renderPhotoBox();}};
   $('#aiBtn').onclick=aiImport;
   $('#saveRecipe').onclick=saveRecipe;
@@ -650,6 +682,8 @@ async function saveRecipe(){
     steps:$('#fSteps').value.trim(),
     tags:$('#fTags').value.split(',').map(s=>s.trim()).filter(Boolean),
     people:[...draftPeople],
+    prep:draftPrep,
+    prepYield:draftPrep?(parseInt($('#fPrepYield').value)||null):null,
     link:normLink($('#fLink').value),
   };
   await dbPut(rec);
@@ -742,6 +776,41 @@ function renderPersonBar(){
     box.appendChild(b);
   });
 }
+function prepUsage(id){
+  // сколько порций заготовки задействовано на выбранной неделе (каждый человек-приём = 1 порция)
+  let n=0;const W=weeks[activeWeek]||{};
+  people.forEach(p=>{
+    const m=W[p.id]||{};
+    for(let d=0;d<7;d++){const dm=m[dayKey(d)]||{};SLOTS.forEach(([k])=>{if(dm[k]===id)n++;});}
+  });
+  return n;
+}
+function renderPrepBar(){
+  const box=$('#prepBar');if(!box)return;box.innerHTML='';
+  const used={};const W=weeks[activeWeek]||{};
+  people.forEach(p=>{
+    const m=W[p.id]||{};
+    for(let d=0;d<7;d++){const dm=m[dayKey(d)]||{};SLOTS.forEach(([k])=>{if(dm[k])used[dm[k]]=(used[dm[k]]||0)+1;});}
+  });
+  const entries=Object.entries(used)
+    .map(([id,n])=>({r:recipes.find(x=>x.id===id),n}))
+    .filter(e=>e.r&&e.r.prep);
+  if(!entries.length){box.style.display='none';return;}
+  box.style.display='block';
+  box.appendChild(el('div','lab','<span>❄️ Заготовки этой недели</span>'));
+  entries.forEach(e=>{
+    const y=e.r.prepYield||0;
+    const ok=!y||e.n<=y;
+    let st;
+    if(!y)st=e.n+' порц.';
+    else if(!ok)st=e.n+' из '+y+' порц. ⚠️ не хватит';
+    else if(e.n===y)st=e.n+' из '+y+' порц. ✅ впритык';
+    else st=e.n+' из '+y+' порц. ✅ останется '+(y-e.n);
+    const row=el('div','preprow'+(ok?'':' bad'),`<span class="nm">❄️ ${esc(e.r.name)}</span><span class="st">${st}</span>`);
+    row.onclick=()=>openDetail(e.r.id);
+    box.appendChild(row);
+  });
+}
 function renderWeekbar(){
   const w=$('#weekbar');w.innerHTML='';
   DOW.forEach((d,i)=>{
@@ -815,7 +884,7 @@ function renderSlots(){
   });
 }
 function refreshMenu(){
-  renderWeekNav();renderPersonBar();renderWeekbar();renderSlots();
+  renderWeekNav();renderPersonBar();renderPrepBar();renderWeekbar();renderSlots();
   const isAll=activePerson==='all';
   document.querySelector('.kcalbar').style.display=isAll?'none':'block';
   $('#autoBuild').style.display=isAll?'none':'flex';
@@ -862,7 +931,10 @@ function openPicker(slotKey){
     items.forEach(r=>{
       const pi=el('div','pi');const im=r.photo?el('img'):el('div','noimg','🍲');if(r.photo)im.src=r.photo;
       pi.appendChild(im);
-      pi.appendChild(el('div',null,`<div class="nm">${esc(r.name)}</div><div class="mt">${r.kcal?r.kcal+' ккал · ':''}${(r.ingredients||[]).length} ингр.</div>`));
+      let prepInfo='';
+      if(r.prep&&r.prepYield){const left=r.prepYield-prepUsage(r.id);prepInfo='❄️ осталось '+Math.max(0,left)+' порц. · ';}
+      else if(r.prep)prepInfo='❄️ заготовка · ';
+      pi.appendChild(el('div',null,`<div class="nm">${esc(r.name)}</div><div class="mt">${prepInfo}${r.kcal?r.kcal+' ккал · ':''}${(r.ingredients||[]).length} ингр.</div>`));
       pi.onclick=()=>{
         const targets=forAll?people.map(p=>p.id):[activePerson,...extraPeople];
         targets.forEach(pid=>{
@@ -918,6 +990,11 @@ function buildShopping(){
       ids.forEach(id=>counts[id]=(counts[id]||0)+1);
     });
   }
+  // заготовка готовится партиями, а не на каждый приём: считаем нужное число партий
+  Object.keys(counts).forEach(id=>{
+    const r=recipes.find(x=>x.id===id);
+    if(r&&r.prep)counts[id]=r.prepYield?Math.max(1,Math.ceil(prepUsage(id)/r.prepYield)):1;
+  });
   const map={};
   Object.entries(counts).forEach(([id,n])=>{
     const r=recipes.find(x=>x.id===id);if(!r)return;
