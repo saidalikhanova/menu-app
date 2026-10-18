@@ -766,7 +766,6 @@ function renderSlotsAll(){
       if(dm[k])(byRec[dm[k]]=byRec[dm[k]]||[]).push(p);
     });
     const ids=Object.keys(byRec);
-    if(!ids.length){slot.appendChild(el('div','hint','Пусто. Чтобы добавить блюдо — выберите вверху 🙋, 👧 или 🧔 (в режиме «Все» меню только просматривается).'));box.appendChild(slot);return;}
     ids.forEach(id=>{
       const r=recipes.find(x=>x.id===id);if(!r)return;
       const row=el('div','picked');row.style.marginTop='6px';
@@ -774,9 +773,21 @@ function renderSlotsAll(){
       row.appendChild(im);
       const who=byRec[id].map(x=>x.emoji||'').join(' ');
       row.appendChild(el('div','nm',esc(r.name)+`<div class="kc">${who}${r.kcal?' · '+r.kcal+' ккал':''}</div>`));
+      const del=el('button','del','×');
+      del.onclick=e=>{
+        e.stopPropagation();
+        const W=wm();
+        byRec[id].forEach(p=>{const mm=W[p.id]||{};const md=mm[dayKey(activeDay)]||{};if(md[k]===id)delete md[k];});
+        saveMenus();refreshMenu();
+      };
+      row.appendChild(del);
       row.onclick=()=>openDetail(r.id);
       slot.appendChild(row);
     });
+    const add=el('button','add','+ Выбрать рецепт для всех');
+    add.style.marginTop=ids.length?'8px':'0';
+    add.onclick=()=>openPicker(k);
+    slot.appendChild(add);
     box.appendChild(slot);
   });
 }
@@ -821,8 +832,13 @@ function openPicker(slotKey){
   const b=$('#sheetBody');b.innerHTML='';
   const s=el('div','search','<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#b7a99e" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3"/></svg>');
   const si=el('input');si.placeholder='Поиск по названию или ингредиенту…';s.appendChild(si);b.appendChild(s);
+  const forAll=activePerson==='all';
   const extraPeople=[];
-  if(people.length>1){
+  if(forAll){
+    const lab=el('div','hint','Блюдо добавится сразу всем: '+people.map(p=>p.emoji||'').join(' '));
+    lab.style.marginTop='12px';b.appendChild(lab);
+  }
+  if(!forAll&&people.length>1){
     const lab=el('div','hint','Добавить это блюдо сразу и для:');lab.style.marginTop='12px';b.appendChild(lab);
     const row=el('div','chips');row.style.padding='6px 0 0';
     people.filter(p=>p.id!==activePerson).forEach(p=>{
@@ -835,7 +851,9 @@ function openPicker(slotKey){
     b.appendChild(row);
   }
   const list=el('div','picklist');list.style.marginTop='12px';b.appendChild(list);
-  const pri=r=>{const pp=r.people||[];return pp.includes(activePerson)?0:(pp.length?2:1);}; // свои → для всех → чужие
+  const pri=forAll
+    ?r=>((r.people||[]).length?1:0)                                            // в режиме «Все»: сначала блюда «для всех»
+    :r=>{const pp=r.people||[];return pp.includes(activePerson)?0:(pp.length?2:1);}; // свои → для всех → чужие
   const draw=()=>{
     list.innerHTML='';const q=si.value.toLowerCase();
     const items=recipes.filter(r=>!q||r.name.toLowerCase().includes(q)||(r.ingredients||[]).some(i=>ingText(i).toLowerCase().includes(q)))
@@ -846,12 +864,13 @@ function openPicker(slotKey){
       pi.appendChild(im);
       pi.appendChild(el('div',null,`<div class="nm">${esc(r.name)}</div><div class="mt">${r.kcal?r.kcal+' ккал · ':''}${(r.ingredients||[]).length} ингр.</div>`));
       pi.onclick=()=>{
-        [activePerson,...extraPeople].forEach(pid=>{
+        const targets=forAll?people.map(p=>p.id):[activePerson,...extraPeople];
+        targets.forEach(pid=>{
           const W=wm();const mm=W[pid]||{};const md=mm[dayKey(activeDay)]||{};
           md[slotKey]=r.id;mm[dayKey(activeDay)]=md;W[pid]=mm;
         });
         saveMenus();closeSheet();refreshMenu();
-        toast(extraPeople.length?'Добавлено для '+(extraPeople.length+1)+' чел. ✓':'Добавлено в меню ✓');
+        toast(forAll?'Добавлено всем ✓':(extraPeople.length?'Добавлено для '+(extraPeople.length+1)+' чел. ✓':'Добавлено в меню ✓'));
       };
       list.appendChild(pi);
     });
