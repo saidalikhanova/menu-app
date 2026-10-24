@@ -651,8 +651,16 @@ function makeIngRow(g){
 }
 function renderIngRows(){
   const box=$('#ingRows');if(!box)return;box.innerHTML='';
-  if(!draftIngs.length)draftIngs.push({name:'',qty:''});
+  if(!draftIngs.length||(draftIngs[draftIngs.length-1].name||'').trim())draftIngs.push({name:'',qty:''});
   draftIngs.forEach(g=>box.appendChild(makeIngRow(g)));
+}
+function addIngRow(){
+  const last=draftIngs[draftIngs.length-1];
+  if(!last||(last.name||'').trim())draftIngs.push({name:'',qty:''});
+  renderIngRows();
+  const rows=document.querySelectorAll('#ingRows .ingrow');
+  const inp=rows[rows.length-1].querySelector('input');
+  inp.scrollIntoView({block:'center'});inp.focus();
 }
 function openEditor(r){
   editingId=r?r.id:null;draftPhoto=r?r.photo:null;draftPeople=r?[...(r.people||[])]:[];
@@ -674,6 +682,7 @@ function openEditor(r){
     </div>
     <label class="f">Ингредиенты <span style="font-weight:400">(название · количество)</span></label>
     <div id="ingRows"></div>
+    <button type="button" class="btn ghost sm" id="addIng" style="margin-top:10px">＋ Добавить ингредиент</button>
     <label class="f">Как готовить</label>
     <textarea class="t" id="fSteps" placeholder="Нарезать овощи&#10;Заправить маслом&#10;Посолить по вкусу">${r?esc(r.steps||''):''}</textarea>
     <label class="f">Категории <span style="font-weight:400">(через запятую)</span></label>
@@ -693,6 +702,7 @@ function openEditor(r){
     <button class="btn primary" id="saveRecipe" style="margin-top:22px">Сохранить рецепт</button>
   `;
   renderPhotoBox();renderFPeople();renderIngRows();
+  $('#addIng').onclick=addIngRow;
   draftPrep=!!(r&&r.prep);
   const syncPrep=()=>{
     $('#fPrep').classList.toggle('on',draftPrep);
