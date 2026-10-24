@@ -209,6 +209,8 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
 .strow .ok{color:var(--accent-2);font-weight:700}
 .strow .bad{color:var(--accent);font-weight:700}
 .qbtn{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--card);cursor:pointer;font-size:16px;color:var(--ink);flex:0 0 auto}
+.qbtn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.pth{width:46px;height:46px;border-radius:10px;object-fit:cover;flex:0 0 auto;cursor:pointer;background:var(--accent-soft)}
 .urg{background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:800;padding:2px 7px;border-radius:12px;margin-left:6px;white-space:nowrap}
 .sechd{display:flex;justify-content:space-between;align-items:center;margin:4px 0 6px;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
 /* preps */
@@ -415,6 +417,20 @@ async function dbAll(){const db=await idb();return new Promise((res)=>{const t=d
 async function dbPut(o){const db=await idb();return new Promise((res)=>{const t=db.transaction(STORE,'readwrite');t.objectStore(STORE).put(o);t.oncomplete=res});}
 async function dbDel(id){const db=await idb();return new Promise((res)=>{const t=db.transaction(STORE,'readwrite');t.objectStore(STORE).delete(id);t.oncomplete=res});}
 
+/* фото продуктов — отдельная база, чтобы не трогать базу рецептов */
+function idbP(){return new Promise((res,rej)=>{const r=indexedDB.open('menuapp-photos',1);
+  r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains('photos'))db.createObjectStore('photos',{keyPath:'id'})};
+  r.onsuccess=e=>res(e.target.result);r.onerror=e=>rej(e)});}
+async function photosAll(){
+  try{const db=await idbP();return await new Promise(res=>{
+    const t=db.transaction('photos').objectStore('photos').getAll();
+    t.onsuccess=()=>{const m={};(t.result||[]).forEach(x=>m[x.id]=x.data);res(m);};
+    t.onerror=()=>res({});
+  });}catch(e){return {};}
+}
+async function photoPut(id,data){const db=await idbP();return new Promise(res=>{const t=db.transaction('photos','readwrite');t.objectStore('photos').put({id,data});t.oncomplete=res;t.onerror=res;});}
+async function photoDel(id){const db=await idbP();return new Promise(res=>{const t=db.transaction('photos','readwrite');t.objectStore('photos').delete(id);t.oncomplete=res;t.onerror=res;});}
+
 const LS={
   get(k,d){try{return JSON.parse(localStorage.getItem('ma_'+k))??d}catch(e){return d}},
   set(k,v){localStorage.setItem('ma_'+k,JSON.stringify(v))}
@@ -447,7 +463,12 @@ const DOW=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 const SLOTS=[['breakfast','Завтрак','🌅'],['lunch','Обед','🍲'],['dinner','Ужин','🌙'],['snack','Перекус','🍎']];
 let shopping=LS.get('shopping',{items:[]});
 let batches=LS.get('batches',[]);   // факт приготовления заготовок: {id,recipeId,portions,adj,date:'YYYY-MM-DD',place}
-let pantry=LS.get('pantry',[]);     // продукты дома: {id,name,qty,place,urgent}
+let pantry=LS.get('pantry',[]);     // продукты дома: {id,name,qty,place,urgent,photoId}
+let photosCache={};                 // photoId → dataURL (фото продуктов, лежат в IndexedDB 'menuapp-photos')
+function cleanupPhoto(id){          // удалить фото, если на него больше не ссылается ни один продукт
+  if(!id||pantry.some(p=>p.photoId===id))return;
+  delete photosCache[id];photoDel(id);
+}
 const PLACES={fridge:'🧊 холодильник',freezer:'❄️ морозилка',shelf:'🗄 шкаф'};
 function saveBatches(){LS.set('batches',batches);}
 function savePantry(){LS.set('pantry',pantry);}
@@ -485,15 +506,22 @@ function linkLabel(link){
 }
 
 /* resize image -> compressed dataURL */
-function fileToPhoto(file){return new Promise((res)=>{
+function fileToPhoto(file){return fileToPhotoSized(file,1100,0.72);}
+function fileToPhotoSized(file,max,q){return new Promise((res)=>{
   const img=new Image();const rd=new FileReader();
-  rd.onload=()=>{img.onload=()=>{
-    const max=1100;let{width:w,height:h}=img;
-    if(w>h&&w>max){h=h*max/w;w=max;}else if(h>max){w=w*max/h;h=max;}
-    const c=document.createElement('canvas');c.width=w;c.height=h;
-    c.getContext('2d').drawImage(img,0,0,w,h);
-    res(c.toDataURL('image/jpeg',0.72));
-  };img.src=rd.result;};rd.readAsDataURL(file);
+  rd.onload=()=>{
+    img.onload=()=>{
+      let{width:w,height:h}=img;
+      if(w>h&&w>max){h=h*max/w;w=max;}else if(h>max){w=w*max/h;h=max;}
+      const c=document.createElement('canvas');c.width=w;c.height=h;
+      c.getContext('2d').drawImage(img,0,0,w,h);
+      res(c.toDataURL('image/jpeg',q));
+    };
+    img.onerror=()=>res(null);
+    img.src=rd.result;
+  };
+  rd.onerror=()=>res(null);
+  rd.readAsDataURL(file);
 });}
 
 /* ---------------- RECIPES view ---------------- */
@@ -1247,7 +1275,9 @@ function adjustLatest(id,delta){
 function openPantryEditor(item){
   $('#sheetTitle').textContent=item?'Продукт дома':'Новый продукт';
   const b=$('#sheetBody');
-  b.innerHTML=`<label class="f" style="margin-top:0">Название</label>
+  b.innerHTML=`<div class="photobox" id="pPhoto" style="aspect-ratio:16/9;margin-bottom:6px"></div>
+    <input type="file" id="pPhotoInput" accept="image/*" hidden>
+    <label class="f">Название</label>
     <input class="t" id="pName" placeholder="Брокколи замороженная" value="${item?esc(item.name):''}">
     <label class="f">Сколько <span style="font-weight:400">(для памяти, необязательно)</span></label>
     <input class="t" id="pQty" placeholder="400 г / 1 пачка" value="${item?esc(item.qty||''):''}">
@@ -1267,19 +1297,48 @@ function openPantryEditor(item){
     $('#pUrg').classList.toggle('on',urgent);
   };
   draw();
+  // фото: текущее (общее для полки) или новое, выбранное здесь
+  let photoId=item?item.photoId||null:null, newPhoto=null;
+  const drawPhoto=()=>{
+    const box=$('#pPhoto');
+    const src=newPhoto||(photoId&&photosCache[photoId]);
+    if(src){
+      box.innerHTML=`<img src="${src}"><div class="photo-actions"><button type="button" class="replace">🔄 Заменить</button><button type="button" class="remove">🗑 Убрать</button></div>`;
+      box.onclick=null;
+      box.querySelector('.replace').onclick=e=>{e.stopPropagation();$('#pPhotoInput').click();};
+      box.querySelector('.remove').onclick=e=>{e.stopPropagation();newPhoto=null;photoId=null;$('#pPhotoInput').value='';drawPhoto();};
+    }else{
+      box.innerHTML='<div class="ico">📷</div><div>Добавить фото продукта</div>';
+      box.onclick=()=>$('#pPhotoInput').click();
+    }
+  };
+  drawPhoto();
+  $('#pPhotoInput').onchange=async e=>{
+    const f=e.target.files[0];if(!f)return;
+    const ph=await fileToPhotoSized(f,800,0.7);
+    if(ph){newPhoto=ph;drawPhoto();}else toast('Не удалось открыть фото');
+  };
   $('#pUrg').onclick=()=>{urgent=!urgent;draw();};
-  $('#pSave').onclick=()=>{
+  $('#pSave').onclick=async()=>{
     const name=$('#pName').value.trim();
     if(!name){toast('Введите название');return;}
-    const data={name,qty:$('#pQty').value.trim(),place,urgent};
+    const oldPhotoId=item?item.photoId||null:null;
+    let finalPhotoId=photoId;
+    if(newPhoto){finalPhotoId='ph'+Date.now();photosCache[finalPhotoId]=newPhoto;await photoPut(finalPhotoId,newPhoto);}
+    const data={name,qty:$('#pQty').value.trim(),place,urgent,photoId:finalPhotoId};
     if(item)Object.assign(item,data);else pantry.push({id:'p'+Date.now(),...data});
+    if(oldPhotoId&&oldPhotoId!==finalPhotoId)cleanupPhoto(oldPhotoId);
     savePantry();closeSheet();renderStock();renderRecipes();
     toast('Сохранено ✓');
   };
   if(item){
     const del=el('button','btn ghost','✔ Закончилось — убрать из запасов');
     del.style.cssText='margin-top:10px;color:#c0392b';
-    del.onclick=()=>{pantry=pantry.filter(x=>x.id!==item.id);savePantry();closeSheet();renderStock();renderRecipes();toast('Убрано');};
+    del.onclick=()=>{
+      pantry=pantry.filter(x=>x.id!==item.id);
+      cleanupPhoto(item.photoId);
+      savePantry();closeSheet();renderStock();renderRecipes();toast('Убрано');
+    };
     b.appendChild(del);
   }
   openSheet();
@@ -1315,6 +1374,140 @@ function openPantryBulk(){
     savePantry();closeSheet();renderStock();renderRecipes();
     toast('Добавлено: '+lines.length);
   };
+  openSheet();
+}
+/* ---- продукты по фото: ИИ называет, вы проверяете, фото сохраняется ---- */
+async function recognizeProducts(photo,key){
+  const prompt='На фото продукты питания, которые есть у меня дома (полка холодильника, морозилка, шкаф, стол или одна упаковка). '
+    +'Перечисли отдельные продукты, которые видно. Верни СТРОГО JSON без markdown и пояснений:\n'
+    +'{"items":[{"name":"Творог","qty":"400 г","place":"fridge","urgent":false}]}\n'
+    +'Правила:\n'
+    +'- "name": простое общее название по-русски с заглавной буквы, как в кулинарных рецептах («Творог», «Куриное филе», «Брокколи замороженная», «Гречка»). Без брендов и без количества.\n'
+    +'- "qty": количество, если оно видно на упаковке или его можно разумно оценить («500 г», «1 пачка», «3 шт», «½ упаковки»); если неясно — пустая строка.\n'
+    +'- "place": где это, судя по фото: "fridge" (холодильник), "freezer" (морозилка, замороженное), "shelf" (шкаф, крупы, консервы, овощи на столе), иначе пустая строка.\n'
+    +'- "urgent": true только если видно, что продукт скоро испортится (срок годности на исходе, увядшая зелень, перезрелые фрукты).\n'
+    +'- Одинаковые продукты не дублируй. Не выдумывай то, чего не видно. Если на фото нет еды — верни {"items":[]}.';
+  const resp=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
+    body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1500,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:photo.split(',')[1]}},{type:'text',text:prompt}]}]})
+  });
+  if(!resp.ok){const t=await resp.text();throw new Error(resp.status+' '+t.slice(0,120));}
+  const data=await resp.json();
+  const txt=data.content[0].text.trim().replace(/^```json?/,'').replace(/```$/,'').trim();
+  const res=JSON.parse(txt);
+  return (res.items||[]).filter(it=>it&&typeof it.name==='string'&&it.name.trim()).map(it=>({
+    name:it.name.trim(),
+    qty:(it.qty||'').toString().trim(),
+    place:PLACES[it.place]?it.place:'',
+    urgent:!!it.urgent,
+  }));
+}
+function openPantryPhotos(){
+  const key=LS.get('apiKey','');
+  if(!key){toast('Сначала вставьте API-ключ во вкладке «Я»');return;}
+  const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
+  inp.onchange=e=>processPantryFiles([...e.target.files].slice(0,6));
+  inp.click();
+}
+async function processPantryFiles(files){
+  if(!files.length)return;
+  const key=LS.get('apiKey','');
+  $('#sheetTitle').textContent='Распознаю продукты';
+  $('#sheetBody').innerHTML='<div class="empty"><span class="spinner" style="border-color:rgba(0,0,0,.15);border-top-color:var(--accent)"></span><div id="phProg" style="margin-top:12px"></div></div>';
+  openSheet();
+  const groups=[];
+  for(let i=0;i<files.length;i++){
+    const pr=$('#phProg');if(pr)pr.textContent='Распознаю фото '+(i+1)+' из '+files.length+'…';
+    const photo=await fileToPhotoSized(files[i],800,0.7);
+    if(!photo){groups.push({id:null,photo:null,items:[],err:'не удалось открыть фото'});continue;}
+    try{
+      const items=await recognizeProducts(photo,key);
+      groups.push({id:'ph'+Date.now()+'_'+i,photo,items,err:null});
+    }catch(err){
+      groups.push({id:null,photo,items:[],err:err.message});
+    }
+  }
+  openPantryReview(groups);
+}
+function openPantryReview(groups){
+  $('#sheetTitle').textContent='Найденные продукты';
+  const b=$('#sheetBody');b.innerHTML='';
+  const total=groups.reduce((s,g)=>s+g.items.length,0);
+  const errs=groups.filter(g=>g.err).map(g=>g.err);
+  if(!total){
+    b.appendChild(el('div','empty','<div class="big">🤷</div>Продукты на фото не нашлись.<div class="hint" style="margin-top:6px">Снимите ближе и при хорошем свете, лучше по одной полке.'+(errs.length?'<br><br>Ошибка: '+esc(errs[0]):'')+'</div>'));
+    openSheet();return;
+  }
+  b.appendChild(el('div','hint','Проверьте названия и количество, уберите галочки с лишнего. Фото сохранится у добавленных продуктов.'));
+  let globalPlace=null;
+  groups.forEach(g=>{
+    g.items.forEach(it=>{it.on=true;it.dup=pantry.find(p=>nameMatch(p.name,it.name))||null;if(it.dup)it.on=false;});
+    if(g.photo){
+      const im=el('img');im.src=g.photo;im.style.cssText='height:92px;border-radius:12px;margin:14px 0 4px;display:block;max-width:100%;object-fit:cover';
+      b.appendChild(im);
+    }
+    if(g.err)b.appendChild(el('div','hint','⚠️ '+esc(g.err)));
+    g.items.forEach(it=>{
+      const wrap=el('div');
+      const row=el('div','ingrow');
+      const chk=el('button','qbtn'+(it.on?' on':''),it.on?'✓':'');chk.type='button';
+      chk.onclick=()=>{it.on=!it.on;chk.classList.toggle('on',it.on);chk.textContent=it.on?'✓':'';};
+      const n=el('input','t in');n.value=it.name;n.oninput=()=>it.name=n.value;
+      const q=el('input','t iq');q.value=it.qty;q.placeholder='кол-во';q.oninput=()=>it.qty=q.value;
+      q.style.width='84px';
+      const u=el('button','qbtn'+(it.urgent?' on':''),'⏳');u.type='button';u.title='Скоро испортится';
+      u.onclick=()=>{it.urgent=!it.urgent;u.classList.toggle('on',it.urgent);};
+      row.append(chk,n,q,u);wrap.appendChild(row);
+      if(it.dup)wrap.appendChild(el('div','hint','Уже есть в запасах («'+esc(it.dup.name)+'»). Поставьте галочку, чтобы обновить количество.'));
+      b.appendChild(wrap);
+    });
+  });
+  b.appendChild(el('div','hint','Где это лежит (если не выбрать — оставлю как определил ИИ):')).style.marginTop='16px';
+  const pc=el('div','chips');pc.style.padding='6px 0 0';
+  const drawP=()=>{
+    pc.innerHTML='';
+    Object.keys(PLACES).forEach(k=>{
+      const c=el('div','chip'+(globalPlace===k?' on':''),PLACES[k]);
+      c.onclick=()=>{globalPlace=globalPlace===k?null:k;drawP();};
+      pc.appendChild(c);
+    });
+  };
+  drawP();b.appendChild(pc);
+  const save=el('button','btn primary','Добавить в запасы');save.style.marginTop='20px';
+  save.onclick=async()=>{
+    let added=0,updated=0,seq=0;const usedGroups=new Set();
+    groups.forEach(g=>g.items.forEach(it=>{
+      if(!it.on)return;
+      const name=(it.name||'').trim();if(!name)return;
+      const place=globalPlace!==null?globalPlace:(it.place||'');
+      if(it.dup){
+        if(it.qty)it.dup.qty=it.qty;
+        if(it.urgent)it.dup.urgent=true;
+        if(place&&!it.dup.place)it.dup.place=place;
+        if(!it.dup.photoId&&g.id){it.dup.photoId=g.id;usedGroups.add(g);}
+        updated++;
+      }else{
+        pantry.push({id:'p'+Date.now()+'_'+(seq++),name,qty:(it.qty||'').trim(),place,urgent:!!it.urgent,photoId:g.id||null});
+        if(g.id)usedGroups.add(g);
+        added++;
+      }
+    }));
+    for(const g of usedGroups){photosCache[g.id]=g.photo;await photoPut(g.id,g.photo);}
+    savePantry();closeSheet();renderStock();renderRecipes();
+    toast(added||updated?('Добавлено: '+added+(updated?', обновлено: '+updated:'')+' ✓'):'Ничего не выбрано');
+  };
+  b.appendChild(save);
+  openSheet();
+}
+function openPhotoView(photoId){
+  const data=photosCache[photoId];if(!data)return;
+  $('#sheetTitle').textContent='Фото продуктов';
+  const b=$('#sheetBody');b.innerHTML='';
+  const im=el('img');im.src=data;im.style.cssText='width:100%;border-radius:14px;display:block';
+  b.appendChild(im);
+  const names=pantry.filter(p=>p.photoId===photoId).map(p=>p.name);
+  if(names.length)b.appendChild(el('div','hint','На этом фото: '+esc(names.join(', '))+'.')).style.marginTop='10px';
   openSheet();
 }
 function openIdeas(){
@@ -1381,12 +1574,19 @@ function renderStock(){
   sorted.forEach(p=>{
     const n=recipes.filter(r=>(r.ingredients||[]).some(i=>nameMatch(p.name,ingObj(i).name))).length;
     const row=el('div','strow');
+    if(p.photoId&&photosCache[p.photoId]){
+      const th=el('img','pth');th.src=photosCache[p.photoId];th.onclick=()=>openPhotoView(p.photoId);
+      row.appendChild(th);
+    }
     const sub=[p.qty,p.place?PLACES[p.place]:'',n?'в '+n+' рецепт.':'пока не в рецептах'].filter(Boolean).join(' · ');
     const tx=el('div','tx',`<div class="nm">${esc(p.name)}${p.urgent?'<span class="urg">⏳ скоро</span>':''}</div><div class="sub">${esc(sub)}</div>`);
     tx.onclick=()=>openPantryEditor(p);
     row.appendChild(tx);
     c2.appendChild(row);
   });
+  const phb=el('button','btn primary','📷 Добавить по фото');phb.style.marginTop='12px';phb.onclick=openPantryPhotos;
+  c2.appendChild(phb);
+  c2.appendChild(el('div','hint','Сфотографируйте полку или продукт — ИИ сам напишет названия, вы проверите. Можно выбрать несколько фото сразу.'));
   const quick=el('div','search');quick.style.marginTop='10px';
   const qi=el('input');qi.placeholder='Быстро добавить продукт…';
   const qb=el('button','btn sm primary','＋');qb.style.flex='0 0 auto';
@@ -1510,7 +1710,7 @@ $('#newItem').onkeydown=e=>{if(e.key==='Enter')addManualItem();};
 $('#saveProfile').onclick=saveProfile;
 $('#saveKey').onclick=()=>{LS.set('apiKey',$('#apiKey').value.trim());$('#apiKey').value='';toast('Ключ сохранён ✓');};
 $('#exportData').onclick=()=>{
-  const blob=new Blob([JSON.stringify({recipes,profile,people,weeks,shopping,batches,pantry},null,2)],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({recipes,profile,people,weeks,shopping,batches,pantry,pantryPhotos:photosCache},null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='мои-рецепты-'+new Date().toISOString().slice(0,10)+'.json';a.click();
 };
 $('#importData').onclick=()=>$('#importFile').click();
@@ -1525,12 +1725,14 @@ $('#importFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=ne
   if(d.shopping)LS.set('shopping',d.shopping);
   if(d.batches)LS.set('batches',d.batches);
   if(d.pantry)LS.set('pantry',d.pantry);
+  if(d.pantryPhotos){for(const [id,data] of Object.entries(d.pantryPhotos))await photoPut(id,data);}
   location.reload();
 }catch(err){toast('Не удалось прочитать файл');}};rd.readAsText(f);};
 
 /* ---------------- init ---------------- */
 async function init(){
   recipes=await dbAll();
+  photosCache=await photosAll();
   profile=LS.get('profile',{});
   LS.set('people',people);saveMenus();   // закрепить дефолт/миграцию
   const jsDay=(new Date().getDay()+6)%7;activeDay=jsDay; // Mon=0
