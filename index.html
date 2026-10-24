@@ -1196,12 +1196,28 @@ function nameMatch(a,b){
   return s.every(w=>l.some(x=>wordEq(w,x)));
 }
 function pantryMatch(name){return pantry.find(p=>nameMatch(p.name,name));}
+/* сколько дней продукт лежит и не пора ли его использовать (порог зависит от места хранения) */
+const STALE_DAYS={fridge:5,freezer:90,shelf:180,'':14};
+function pantryAge(p){
+  if(!p.since)return null;
+  const [y,m,d]=p.since.split('-').map(Number);
+  const t=new Date();t.setHours(0,0,0,0);
+  return Math.max(0,Math.round((t-new Date(y,m-1,d))/86400000));
+}
+function pantryStale(p){const a=pantryAge(p);return a!==null&&a>=(STALE_DAYS[p.place||'']??14);}
+function pantryUseFirst(p){return !!p.urgent||pantryStale(p);}
+function ageText(a){
+  if(a===0)return 'сегодня';
+  if(a<30)return a+' дн.';
+  if(a<365)return Math.floor(a/30)+' мес.';
+  return Math.floor(a/365)+' г.';
+}
 function recipePantry(r){
   const ings=(r.ingredients||[]).map(ingObj).filter(o=>o.name&&!/по вкусу/i.test(o.qty));
   const have=[],miss=[];let urgent=0;
   ings.forEach(o=>{
     const p=pantryMatch(o.name);
-    if(p){have.push(o.name);if(p.urgent)urgent++;}else miss.push(o.name);
+    if(p){have.push(o.name);if(pantryUseFirst(p))urgent++;}else miss.push(o.name);
   });
   return {total:ings.length,have,miss,urgent};
 }
@@ -1283,6 +1299,9 @@ function openPantryEditor(item){
     <input class="t" id="pQty" placeholder="400 г / 1 пачка" value="${item?esc(item.qty||''):''}">
     <label class="f">Где лежит</label>
     <div class="chips" id="pPlace" style="padding:2px 0 0"></div>
+    <label class="f">Лежит с <span style="font-weight:400">(когда купили, заморозили или открыли)</span></label>
+    <input class="t" id="pSince" type="date" value="${item?(item.since||''):isoDate(new Date())}">
+    <div class="hint" id="pAgeHint"></div>
     <label class="f">Портится?</label>
     <div class="chips" style="padding:2px 0 0"><div class="chip" id="pUrg">⏳ Использовать в первую очередь</div></div>
     <button class="btn primary" id="pSave" style="margin-top:22px">Сохранить</button>`;
@@ -1295,8 +1314,16 @@ function openPantryEditor(item){
       box.appendChild(c);
     });
     $('#pUrg').classList.toggle('on',urgent);
+    const tmp={since:$('#pSince').value||null,place};
+    const a=pantryAge(tmp);
+    const lim=STALE_DAYS[place||'']??14;
+    $('#pAgeHint').textContent=a===null?'Без даты приложение не сможет подсказать, что залежалось.'
+      :(a===0?'Добавлен сегодня':'Лежит '+ageText(a))
+        +(pantryStale(tmp)?' — пора использовать.':'.')
+        +' Подсвечу как «давно лежит» через '+lim+' дн. ('+(PLACES[place]||'место не указано')+').';
   };
   draw();
+  $('#pSince').oninput=draw;
   // фото: текущее (общее для полки) или новое, выбранное здесь
   let photoId=item?item.photoId||null:null, newPhoto=null;
   const drawPhoto=()=>{
@@ -1325,7 +1352,7 @@ function openPantryEditor(item){
     const oldPhotoId=item?item.photoId||null:null;
     let finalPhotoId=photoId;
     if(newPhoto){finalPhotoId='ph'+Date.now();photosCache[finalPhotoId]=newPhoto;await photoPut(finalPhotoId,newPhoto);}
-    const data={name,qty:$('#pQty').value.trim(),place,urgent,photoId:finalPhotoId};
+    const data={name,qty:$('#pQty').value.trim(),place,urgent,photoId:finalPhotoId,since:$('#pSince').value||null};
     if(item)Object.assign(item,data);else pantry.push({id:'p'+Date.now(),...data});
     if(oldPhotoId&&oldPhotoId!==finalPhotoId)cleanupPhoto(oldPhotoId);
     savePantry();closeSheet();renderStock();renderRecipes();
@@ -1369,7 +1396,7 @@ function openPantryBulk(){
       const o=ingObj(line);if(!o.name)return;
       const ex=pantry.find(p=>p.name.toLowerCase()===o.name.toLowerCase());
       if(ex){if(o.qty)ex.qty=o.qty;}
-      else{pantry.push({id:'p'+Date.now()+'_'+(added++),name:o.name,qty:o.qty,place,urgent:false});}
+      else{pantry.push({id:'p'+Date.now()+'_'+(added++),name:o.name,qty:o.qty,place,urgent:false,since:isoDate(new Date())});}
     });
     savePantry();closeSheet();renderStock();renderRecipes();
     toast('Добавлено: '+lines.length);
@@ -1488,7 +1515,7 @@ function openPantryReview(groups){
         if(!it.dup.photoId&&g.id){it.dup.photoId=g.id;usedGroups.add(g);}
         updated++;
       }else{
-        pantry.push({id:'p'+Date.now()+'_'+(seq++),name,qty:(it.qty||'').trim(),place,urgent:!!it.urgent,photoId:g.id||null});
+        pantry.push({id:'p'+Date.now()+'_'+(seq++),name,qty:(it.qty||'').trim(),place,urgent:!!it.urgent,photoId:g.id||null,since:isoDate(new Date())});
         if(g.id)usedGroups.add(g);
         added++;
       }
@@ -1570,7 +1597,9 @@ function renderStock(){
   if(!pantry.length){
     c2.appendChild(el('div','hint','Добавьте, что лежит в холодильнике и шкафу, — приложение подскажет рецепты из ваших продуктов и не станет заносить их в список покупок.'));
   }
-  const sorted=pantry.slice().sort((a,b2)=>(b2.urgent?1:0)-(a.urgent?1:0)||a.name.localeCompare(b2.name,'ru'));
+  // сверху: «скоро испортится», потом залежавшиеся, потом самые старые
+  const sorted=pantry.slice().sort((a,b2)=>
+    (b2.urgent?1:0)-(a.urgent?1:0)||(pantryStale(b2)?1:0)-(pantryStale(a)?1:0)||(pantryAge(b2)??-1)-(pantryAge(a)??-1)||a.name.localeCompare(b2.name,'ru'));
   sorted.forEach(p=>{
     const n=recipes.filter(r=>(r.ingredients||[]).some(i=>nameMatch(p.name,ingObj(i).name))).length;
     const row=el('div','strow');
@@ -1578,8 +1607,11 @@ function renderStock(){
       const th=el('img','pth');th.src=photosCache[p.photoId];th.onclick=()=>openPhotoView(p.photoId);
       row.appendChild(th);
     }
-    const sub=[p.qty,p.place?PLACES[p.place]:'',n?'в '+n+' рецепт.':'пока не в рецептах'].filter(Boolean).join(' · ');
-    const tx=el('div','tx',`<div class="nm">${esc(p.name)}${p.urgent?'<span class="urg">⏳ скоро</span>':''}</div><div class="sub">${esc(sub)}</div>`);
+    const age=pantryAge(p), stale=pantryStale(p);
+    const since=p.since?'с '+fmtDate(p.since)+' ('+ageText(age)+')':'дата не указана';
+    const sub=[p.qty,p.place?PLACES[p.place]:'',since,n?'в '+n+' рецепт.':'пока не в рецептах'].filter(Boolean).join(' · ');
+    const badge=p.urgent?'<span class="urg">⏳ скоро</span>':(stale?'<span class="urg">🕰 давно лежит</span>':'');
+    const tx=el('div','tx',`<div class="nm">${esc(p.name)}${badge}</div><div class="sub">${esc(sub)}</div>`);
     tx.onclick=()=>openPantryEditor(p);
     row.appendChild(tx);
     c2.appendChild(row);
@@ -1592,7 +1624,7 @@ function renderStock(){
   const qb=el('button','btn sm primary','＋');qb.style.flex='0 0 auto';
   const addQuick=()=>{
     const v=qi.value.trim();if(!v)return;
-    pantry.push({id:'p'+Date.now(),name:v,qty:'',place:'',urgent:false});
+    pantry.push({id:'p'+Date.now(),name:v,qty:'',place:'',urgent:false,since:isoDate(new Date())});
     savePantry();renderStock();renderRecipes();
   };
   qb.onclick=addQuick;qi.onkeydown=e=>{if(e.key==='Enter')addQuick();};
