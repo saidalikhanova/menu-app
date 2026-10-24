@@ -611,6 +611,10 @@ function openDetail(id){
     b.appendChild(el('h3','sec','Ингредиенты'));
     const ul=el('ul','ing');r.ingredients.forEach(i=>{const o=ingObj(i);ul.appendChild(el('li',null,'<span>'+esc(o.name)+(o.qty?' <span style="color:var(--muted)">— '+esc(o.qty)+'</span>':'')+'</span>'));});b.appendChild(ul);
   }
+  if(!(r.ingredients||[]).length&&!r.steps){
+    const e=el('div','hint','В этом рецепте пока нет ингредиентов и шагов приготовления. Нажмите «✏️ Редактировать» ниже, чтобы дописать их вручную или распознать по скриншоту.');
+    e.style.marginTop='16px';b.appendChild(e);
+  }
   if(r.steps){
     b.appendChild(el('h3','sec','Приготовление'));
     const ol=el('ol','steps');r.steps.split(/\n+/).filter(s=>s.trim()).forEach(s=>ol.appendChild(el('li',null,esc(s.replace(/^\d+[\.\)]\s*/,'')))));b.appendChild(ol);
@@ -1754,7 +1758,7 @@ function switchTab(tab){
 document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 
 /* ---------------- sheet ---------------- */
-function openSheet(){$('#sheetBg').classList.add('open');$('#sheet').classList.add('open');document.body.style.overflow='hidden';}
+function openSheet(){$('#sheet').scrollTop=0;$('#sheetBg').classList.add('open');$('#sheet').classList.add('open');document.body.style.overflow='hidden';}
 function closeSheet(){$('#sheetBg').classList.remove('open');$('#sheet').classList.remove('open');document.body.style.overflow='';editingId=null;draftPhoto=null;}
 $('#sheetClose').onclick=closeSheet;$('#sheetBg').onclick=closeSheet;
 
