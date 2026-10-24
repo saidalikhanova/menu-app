@@ -362,6 +362,18 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
         <button class="btn ghost" id="saveKey" style="margin-top:14px">Сохранить ключ</button>
       </div>
       <div class="pcard">
+        <h3>☁️ Синхронизация с облаком</h3>
+        <div class="hint">Данные сохраняются в ваш закрытый репозиторий на GitHub. Так Claude может читать ваши рецепты и запасы и записывать меню прямо в приложение. Фото рецептов и продуктов остаются только в телефоне.</div>
+        <label class="f">Репозиторий</label>
+        <input class="t" id="syncRepo" placeholder="saidalikhanova/menu-data" autocomplete="off" autocapitalize="off">
+        <label class="f">Токен GitHub</label>
+        <input class="t" id="syncToken" type="password" placeholder="github_pat_…" autocomplete="off">
+        <button class="btn ghost" id="syncSave" style="margin-top:14px">Сохранить и подключить</button>
+        <button class="btn primary" id="syncBtn" style="margin-top:10px">🔄 Синхронизировать сейчас</button>
+        <div class="hint" id="syncStatus" style="margin-top:10px"></div>
+        <button class="btn ghost sm" id="syncOff" style="margin-top:10px;color:#c0392b">Отключить синхронизацию</button>
+      </div>
+      <div class="pcard">
         <h3>Данные</h3>
         <div class="hint">Рецептов сохранено: <b id="recCount">0</b>. Всё хранится в этом телефоне.</div>
         <button class="btn ghost" id="exportData" style="margin-top:14px">⬇️ Сохранить копию (файл)</button>
@@ -414,8 +426,8 @@ function idb(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,1);
   r.onupgradeneeded=e=>{const db=e.target.result;if(!db.objectStoreNames.contains(STORE))db.createObjectStore(STORE,{keyPath:'id'})};
   r.onsuccess=e=>res(e.target.result);r.onerror=e=>rej(e)});}
 async function dbAll(){const db=await idb();return new Promise((res)=>{const t=db.transaction(STORE).objectStore(STORE).getAll();t.onsuccess=()=>res(t.result||[])});}
-async function dbPut(o){const db=await idb();return new Promise((res)=>{const t=db.transaction(STORE,'readwrite');t.objectStore(STORE).put(o);t.oncomplete=res});}
-async function dbDel(id){const db=await idb();return new Promise((res)=>{const t=db.transaction(STORE,'readwrite');t.objectStore(STORE).delete(id);t.oncomplete=res});}
+async function dbPut(o){markDirty();const db=await idb();return new Promise((res)=>{const t=db.transaction(STORE,'readwrite');t.objectStore(STORE).put(o);t.oncomplete=res});}
+async function dbDel(id){markDirty();const db=await idb();return new Promise((res)=>{const t=db.transaction(STORE,'readwrite');t.objectStore(STORE).delete(id);t.oncomplete=res});}
 
 /* фото продуктов — отдельная база, чтобы не трогать базу рецептов */
 function idbP(){return new Promise((res,rej)=>{const r=indexedDB.open('menuapp-photos',1);
@@ -431,10 +443,24 @@ async function photosAll(){
 async function photoPut(id,data){const db=await idbP();return new Promise(res=>{const t=db.transaction('photos','readwrite');t.objectStore('photos').put({id,data});t.oncomplete=res;t.onerror=res;});}
 async function photoDel(id){const db=await idbP();return new Promise(res=>{const t=db.transaction('photos','readwrite');t.objectStore('photos').delete(id);t.oncomplete=res;t.onerror=res;});}
 
+/* данные, которые уходят в облако; запись любого из них запускает синхронизацию */
+const SYNC_KEYS=['profile','people','weeks','shopping','batches','pantry'];
+let syncQuiet=true;          // при запуске и при загрузке из облака изменения не считаются новыми
+let syncTimer=null, syncBusy=false, dirtySeq=0;
 const LS={
   get(k,d){try{return JSON.parse(localStorage.getItem('ma_'+k))??d}catch(e){return d}},
-  set(k,v){localStorage.setItem('ma_'+k,JSON.stringify(v))}
+  set(k,v){localStorage.setItem('ma_'+k,JSON.stringify(v));if(SYNC_KEYS.includes(k))markDirty();}
 };
+function syncCfg(){return LS.get('sync',{});}
+function syncOn(){const c=syncCfg();return !!(c.token&&c.repo);}
+function markDirty(){
+  if(syncQuiet)return;
+  dirtySeq++;
+  const c=syncCfg();
+  if(!c.dirty){c.dirty=true;LS.set('sync',c);}
+  if(!syncOn())return;
+  clearTimeout(syncTimer);syncTimer=setTimeout(()=>syncNow(false),4000);
+}
 
 /* ---------------- state ---------------- */
 let recipes=[];
@@ -1787,6 +1813,21 @@ $('#aiShop').onclick=aiOrganizeShopping;
 $('#addItem').onclick=addManualItem;
 $('#newItem').onkeydown=e=>{if(e.key==='Enter')addManualItem();};
 $('#saveProfile').onclick=saveProfile;
+$('#syncSave').onclick=()=>{
+  const c=syncCfg();
+  const repo=$('#syncRepo').value.trim().replace(/^https?:\/\/github\.com\//,'').replace(/\.git$/,'').replace(/\/$/,'');
+  const tok=$('#syncToken').value.trim();
+  if(!/^[\w.-]+\/[\w.-]+$/.test(repo)){toast('Репозиторий в виде «имя/репозиторий»');return;}
+  if(!tok&&!c.token){toast('Вставьте токен');return;}
+  if(repo!==c.repo){delete c.lastSha;}               // другой репозиторий — начинаем заново
+  c.repo=repo;if(tok)c.token=tok;
+  LS.set('sync',c);renderSync();syncNow(true);
+};
+$('#syncBtn').onclick=()=>syncNow(true);
+$('#syncOff').onclick=()=>{
+  if(!confirm('Отключить синхронизацию? Данные в телефоне останутся, токен будет удалён.'))return;
+  const c=syncCfg();delete c.token;delete c.lastSha;LS.set('sync',c);renderSync();toast('Синхронизация отключена');
+};
 $('#saveKey').onclick=()=>{LS.set('apiKey',$('#apiKey').value.trim());$('#apiKey').value='';toast('Ключ сохранён ✓');};
 $('#exportData').onclick=()=>{
   const blob=new Blob([JSON.stringify({recipes,profile,people,weeks,shopping,batches,pantry,pantryPhotos:photosCache},null,2)],{type:'application/json'});
@@ -1808,6 +1849,138 @@ $('#importFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const rd=ne
   location.reload();
 }catch(err){toast('Не удалось прочитать файл');}};rd.readAsText(f);};
 
+/* ---------------- облако: закрытый репозиторий GitHub (data.json) ----------------
+   Телефон и Claude правят один файл. Правило: если изменилось только одно место — берём его;
+   если и телефон, и облако — при ручной синхронизации спрашиваем, при авто — ничего не трогаем.
+   Фото в облако не уходят: у рецептов photo=null, при загрузке подставляются местные. */
+function b64enc(s){const by=new TextEncoder().encode(s);let bin='';for(let i=0;i<by.length;i+=0x8000)bin+=String.fromCharCode.apply(null,by.subarray(i,i+0x8000));return btoa(bin);}
+function b64dec(b){const bin=atob(b.replace(/\s/g,''));const by=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)by[i]=bin.charCodeAt(i);return new TextDecoder().decode(by);}
+function ghErr(s){
+  return s===401?'токен не подходит или истёк':s===403?'у токена нет права записи в репозиторий'
+    :s===404?'репозиторий не найден или у токена нет к нему доступа':'GitHub ответил ошибкой '+s;
+}
+function gh(path,opt={}){
+  const c=syncCfg();
+  return fetch('https://api.github.com/repos/'+c.repo+'/contents/'+path,{
+    cache:'no-store',...opt,
+    headers:{'Authorization':'Bearer '+c.token,'Accept':'application/vnd.github+json',...(opt.headers||{})},
+  });
+}
+async function remoteGet(){
+  const r=await gh('data.json');
+  if(r.status===404){
+    const repo=await fetch('https://api.github.com/repos/'+syncCfg().repo,{cache:'no-store',headers:{'Authorization':'Bearer '+syncCfg().token}});
+    if(!repo.ok)throw new Error(ghErr(repo.status));
+    return null;                                     // репозиторий есть, файла ещё нет
+  }
+  if(!r.ok)throw new Error(ghErr(r.status));
+  const meta=await r.json();
+  let text;
+  if(meta.content&&meta.encoding==='base64')text=b64dec(meta.content);
+  else{                                              // файл больше 1 МБ — GitHub отдаёт его только «сырым»
+    const rr=await gh('data.json',{headers:{'Accept':'application/vnd.github.raw'}});
+    if(!rr.ok)throw new Error(ghErr(rr.status));
+    text=await rr.text();
+  }
+  return {sha:meta.sha,data:JSON.parse(text)};
+}
+function syncSnapshot(){
+  return {format:1,updatedAt:new Date().toISOString(),updatedBy:'phone',
+    recipes:recipes.map(r=>({...r,photo:null,hasPhoto:!!r.photo})),
+    profile,people,weeks,shopping,batches,pantry};
+}
+async function remotePut(sha){
+  const body={message:'Телефон: обновление данных',content:b64enc(JSON.stringify(syncSnapshot(),null,1))};
+  if(sha)body.sha=sha;
+  const r=await gh('data.json',{method:'PUT',body:JSON.stringify(body),headers:{'Content-Type':'application/json'}});
+  if(r.status===409||r.status===422)return {conflict:true};
+  if(!r.ok)throw new Error(ghErr(r.status));
+  return {sha:(await r.json()).content.sha};
+}
+async function applyRemote(d){
+  syncQuiet=true;
+  try{
+    try{localStorage.setItem('ma_preSyncBackup',JSON.stringify(syncSnapshot()));}catch(e){}
+    const localPhoto={};recipes.forEach(r=>{if(r.photo)localPhoto[r.id]=r.photo;});
+    const incoming=(d.recipes||[]).map(r=>{const x={...r};delete x.hasPhoto;x.photo=localPhoto[r.id]||null;return x;});
+    const ids=new Set(incoming.map(r=>r.id));
+    for(const r of recipes)if(!ids.has(r.id))await dbDel(r.id);
+    for(const r of incoming)await dbPut(r);
+    recipes=await dbAll();
+    profile=d.profile||{};LS.set('profile',profile);
+    if(Array.isArray(d.people)&&d.people.length){people=d.people;LS.set('people',people);}
+    weeks=d.weeks||{};LS.set('weeks',weeks);
+    shopping=d.shopping||{items:[]};LS.set('shopping',shopping);
+    batches=d.batches||[];LS.set('batches',batches);
+    pantry=d.pantry||[];LS.set('pantry',pantry);
+    if(activePerson!=='all'&&!people.some(p=>p.id===activePerson))activePerson=people[0].id;
+    renderRecipes();renderProfile();renderPeople();updateRecCount();refreshMenu();renderShopping();renderStock();
+  }finally{syncQuiet=false;}
+}
+function setSyncStatus(msg){
+  const box=$('#syncStatus');if(!box)return;
+  const c=syncCfg();
+  const when=c.lastSyncAt?' Последняя синхронизация: '+new Date(c.lastSyncAt).toLocaleString('ru-RU',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})+'.':'';
+  box.textContent=syncOn()?(msg||'Подключено.')+when:'Не подключено.';
+}
+async function syncNow(manual){
+  if(!syncOn()){if(manual)toast('Сначала вставьте токен и сохраните');return;}
+  if(syncBusy)return;
+  syncBusy=true;clearTimeout(syncTimer);
+  const seq=dirtySeq;
+  setSyncStatus('Синхронизирую…');
+  const finish=(sha,msg)=>{
+    const c=syncCfg();c.lastSha=sha;c.lastSyncAt=Date.now();
+    if(dirtySeq===seq)c.dirty=false;               // правки, сделанные во время синхронизации, уйдут следующим заходом
+    LS.set('sync',c);setSyncStatus(msg);
+    if(c.dirty)syncTimer=setTimeout(()=>syncNow(false),4000);
+  };
+  try{
+    const c=syncCfg();
+    const remote=await remoteGet();
+    if(!remote){
+      const p=await remotePut(null);finish(p.sha,'Данные телефона отправлены в облако.');
+      if(manual)toast('Отправлено в облако ✓');
+    }else if(remote.sha===c.lastSha){
+      if(c.dirty){
+        const p=await remotePut(remote.sha);
+        if(p.conflict){setSyncStatus('Облако изменилось во время отправки — повторю.');syncTimer=setTimeout(()=>syncNow(false),3000);}
+        else{finish(p.sha,'Изменения отправлены в облако.');if(manual)toast('Отправлено в облако ✓');}
+      }else{finish(remote.sha,'Всё актуально.');if(manual)toast('Всё актуально ✓');}
+    }else{                                           // в облаке что-то новое (например, меню от Claude)
+      if(!c.dirty){
+        await applyRemote(remote.data);finish(remote.sha,'Загружены изменения из облака.');
+        toast('Обновлено из облака ✓');
+      }else if(manual){
+        const fresh=!c.lastSha;
+        const takeCloud=confirm(fresh
+          ?'В облаке уже есть данные.\n\nОК — загрузить их в телефон (текущие данные телефона сохранятся в резервной копии).\nОтмена — заменить облако данными телефона.'
+          :'Изменения есть и в телефоне, и в облаке.\n\nОК — взять версию из облака (изменения телефона сохранятся в резервной копии).\nОтмена — отправить версию телефона в облако.');
+        if(takeCloud){await applyRemote(remote.data);finish(remote.sha,'Загружена версия из облака.');toast('Обновлено из облака ✓');}
+        else{const p=await remotePut(remote.sha);if(p.conflict)throw new Error('облако снова изменилось, попробуйте ещё раз');finish(p.sha,'Версия телефона отправлена в облако.');toast('Отправлено в облако ✓');}
+      }else{
+        setSyncStatus('Изменения есть и в телефоне, и в облаке — нажмите «Синхронизировать сейчас».');
+        toast('Есть изменения в облаке — откройте «Я» → «Синхронизировать»');
+      }
+    }
+  }catch(e){
+    setSyncStatus('Не получилось: '+e.message+'.');
+    if(manual)toast('Синхронизация: '+e.message);
+  }finally{syncBusy=false;}
+}
+function renderSync(){
+  const c=syncCfg();
+  $('#syncRepo').value=c.repo||'saidalikhanova/menu-data';
+  $('#syncToken').value='';
+  $('#syncToken').placeholder=c.token?'токен сохранён (вставьте новый, чтобы заменить)':'github_pat_…';
+  $('#syncOff').style.display=syncOn()?'flex':'none';
+  setSyncStatus();
+}
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState!=='visible'||!syncOn())return;
+  if(Date.now()-(syncCfg().lastSyncAt||0)>30000)syncNow(false);
+});
+
 /* ---------------- init ---------------- */
 async function init(){
   recipes=await dbAll();
@@ -1815,8 +1988,10 @@ async function init(){
   profile=LS.get('profile',{});
   LS.set('people',people);saveMenus();   // закрепить дефолт/миграцию
   const jsDay=(new Date().getDay()+6)%7;activeDay=jsDay; // Mon=0
-  renderRecipes();renderProfile();renderPeople();updateRecCount();refreshMenu();renderShopping();renderStock();
-  if(!recipes.length&&!LS.get('seeded',false))seedDemo();
+  renderRecipes();renderProfile();renderPeople();updateRecCount();refreshMenu();renderShopping();renderStock();renderSync();
+  syncQuiet=false;
+  if(!recipes.length&&!LS.get('seeded',false))await seedDemo();
+  if(syncOn())syncNow(false);
 }
 async function seedDemo(){
   LS.set('seeded',true);
