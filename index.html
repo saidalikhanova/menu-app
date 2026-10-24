@@ -1288,6 +1288,49 @@ function adjustLatest(id,delta){
   bs[0].adj=(bs[0].adj||0)+delta;saveBatches();renderStock();refreshMenu();
 }
 
+function openPantryView(p){
+  $('#sheetTitle').textContent='Продукт дома';
+  const b=$('#sheetBody');b.innerHTML='';
+  if(p.photoId&&photosCache[p.photoId]){
+    const im=el('img','detail-photo');im.src=photosCache[p.photoId];im.style.borderRadius='14px';
+    b.appendChild(im);
+  }
+  const h=el('h2',null,esc(p.name));h.style.cssText='margin:14px 0 0;font-size:22px';b.appendChild(h);
+  const tl=el('div','tagline');
+  if(p.urgent)tl.appendChild(el('span','tag k','⏳ скоро испортится'));
+  else if(pantryStale(p))tl.appendChild(el('span','tag k','🕰 давно лежит'));
+  if(p.qty)tl.appendChild(el('span','tag',esc(p.qty)));
+  if(p.place)tl.appendChild(el('span','tag',PLACES[p.place]));
+  b.appendChild(tl);
+  const age=pantryAge(p);
+  b.appendChild(el('div','hint',p.since
+    ?'Лежит с '+fmtDate(p.since)+' — '+(age===0?'добавлен сегодня.':ageText(age).replace(/\.?$/,'.'))
+    :'Дата не указана — добавьте её в «Редактировать», чтобы видеть, что залежалось.'));
+  const uses=recipes.filter(r=>(r.ingredients||[]).some(i=>nameMatch(p.name,ingObj(i).name)));
+  b.appendChild(el('h3','sec','Где используется'));
+  if(!uses.length){
+    b.appendChild(el('div','hint','Пока ни в одном рецепте. Проверьте, что в рецептах этот продукт назван похоже.'));
+  }else{
+    const list=el('div','picklist');
+    uses.forEach(r=>{
+      const pi=el('div','pi');const im=r.photo?el('img'):el('div','noimg','🍲');if(r.photo)im.src=r.photo;
+      pi.appendChild(im);
+      const ing=(r.ingredients||[]).map(ingObj).find(o=>nameMatch(p.name,o.name));
+      pi.appendChild(el('div',null,`<div class="nm">${esc(r.name)}</div><div class="mt">${ing&&ing.qty?'нужно: '+esc(ing.qty)+' · ':''}${r.kcal?r.kcal+' ккал':''}</div>`));
+      pi.onclick=()=>openDetail(r.id);
+      list.appendChild(pi);
+    });
+    b.appendChild(list);
+  }
+  const ed=el('button','btn ghost','✏️ Редактировать');ed.style.marginTop='24px';ed.onclick=()=>openPantryEditor(p);
+  const done=el('button','btn ghost','✔ Закончилось — убрать из запасов');done.style.cssText='margin-top:10px;color:#c0392b';
+  done.onclick=()=>{
+    pantry=pantry.filter(x=>x.id!==p.id);cleanupPhoto(p.photoId);
+    savePantry();closeSheet();renderStock();renderRecipes();toast('Убрано');
+  };
+  b.append(ed,done);
+  openSheet();
+}
 function openPantryEditor(item){
   $('#sheetTitle').textContent=item?'Продукт дома':'Новый продукт';
   const b=$('#sheetBody');
@@ -1612,7 +1655,7 @@ function renderStock(){
     const sub=[p.qty,p.place?PLACES[p.place]:'',since,n?'в '+n+' рецепт.':'пока не в рецептах'].filter(Boolean).join(' · ');
     const badge=p.urgent?'<span class="urg">⏳ скоро</span>':(stale?'<span class="urg">🕰 давно лежит</span>':'');
     const tx=el('div','tx',`<div class="nm">${esc(p.name)}${badge}</div><div class="sub">${esc(sub)}</div>`);
-    tx.onclick=()=>openPantryEditor(p);
+    tx.onclick=()=>openPantryView(p);
     row.appendChild(tx);
     c2.appendChild(row);
   });
