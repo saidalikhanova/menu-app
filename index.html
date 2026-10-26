@@ -910,12 +910,22 @@ function renderPersonBar(){
     box.appendChild(b);
   });
 }
+/* приём пищи хранит список блюд; старые записи — одна строка-id, читаем их как список из одного */
+function slotList(v){return Array.isArray(v)?v.filter(Boolean):(v?[v]:[]);}
+function slotIds(pid,d,k,W){const dm=((W||wm())[pid]||{})[dayKey(d)]||{};return slotList(dm[k]);}
+function setSlot(pid,d,k,arr){
+  const W=wm(),mm=W[pid]=W[pid]||{},md=mm[dayKey(d)]=mm[dayKey(d)]||{};
+  if(arr.length)md[k]=arr;else delete md[k];
+}
+function addToSlot(pid,d,k,id){const a=slotIds(pid,d,k);if(!a.includes(id))a.push(id);setSlot(pid,d,k,a);}
+function removeFromSlot(pid,d,k,id){setSlot(pid,d,k,slotIds(pid,d,k).filter(x=>x!==id));}
+
 function prepUsage(id){
   // сколько порций заготовки задействовано на выбранной неделе (каждый человек-приём = 1 порция)
   let n=0;const W=weeks[activeWeek]||{};
   people.forEach(p=>{
     const m=W[p.id]||{};
-    for(let d=0;d<7;d++){const dm=m[dayKey(d)]||{};SLOTS.forEach(([k])=>{if(dm[k]===id)n++;});}
+    for(let d=0;d<7;d++){const dm=m[dayKey(d)]||{};SLOTS.forEach(([k])=>{n+=slotList(dm[k]).filter(x=>x===id).length;});}
   });
   return n;
 }
@@ -924,7 +934,7 @@ function renderPrepBar(){
   const used={};const W=weeks[activeWeek]||{};
   people.forEach(p=>{
     const m=W[p.id]||{};
-    for(let d=0;d<7;d++){const dm=m[dayKey(d)]||{};SLOTS.forEach(([k])=>{if(dm[k])used[dm[k]]=(used[dm[k]]||0)+1;});}
+    for(let d=0;d<7;d++){const dm=m[dayKey(d)]||{};SLOTS.forEach(([k])=>{slotList(dm[k]).forEach(x=>used[x]=(used[x]||0)+1);});}
   });
   const entries=Object.entries(used)
     .map(([id,n])=>({r:recipes.find(x=>x.id===id),n}))
@@ -953,8 +963,19 @@ function renderWeekbar(){
 }
 function dayKcal(i){
   const m=pmenu()[dayKey(i)]||{};let s=0;
-  SLOTS.forEach(([k])=>{const r=recipes.find(x=>x.id===m[k]);if(r&&r.kcal)s+=r.kcal;});
+  SLOTS.forEach(([k])=>slotList(m[k]).forEach(id=>{const r=recipes.find(x=>x.id===id);if(r&&r.kcal)s+=r.kcal;}));
   return s;
+}
+function pickedRow(r,sub,onDel){
+  const row=el('div','picked');row.style.marginTop='6px';
+  const im=r.photo?el('img'):el('div','noimg','🍲');if(r.photo)im.src=r.photo;
+  row.appendChild(im);
+  row.appendChild(el('div','nm',esc(r.name)+`<div class="kc">${sub}</div>`));
+  const del=el('button','del','×');
+  del.onclick=e=>{e.stopPropagation();onDel();saveMenus();refreshMenu();};
+  row.appendChild(del);
+  row.onclick=()=>openDetail(r.id);
+  return row;
 }
 function renderSlotsAll(){
   const box=$('#slots');box.innerHTML='';
@@ -962,30 +983,15 @@ function renderSlotsAll(){
     const slot=el('div','slot');
     slot.appendChild(el('div','lab',`<span>${emo} ${label}</span>`));
     const byRec={};
-    people.forEach(p=>{
-      const m=wm()[p.id]||{};const dm=m[dayKey(activeDay)]||{};
-      if(dm[k])(byRec[dm[k]]=byRec[dm[k]]||[]).push(p);
-    });
+    people.forEach(p=>slotIds(p.id,activeDay,k).forEach(id=>(byRec[id]=byRec[id]||[]).push(p)));
     const ids=Object.keys(byRec);
     ids.forEach(id=>{
       const r=recipes.find(x=>x.id===id);if(!r)return;
-      const row=el('div','picked');row.style.marginTop='6px';
-      const im=r.photo?el('img'):el('div','noimg','🍲');if(r.photo)im.src=r.photo;
-      row.appendChild(im);
       const who=byRec[id].map(x=>x.emoji||'').join(' ');
-      row.appendChild(el('div','nm',esc(r.name)+`<div class="kc">${who}${r.kcal?' · '+r.kcal+' ккал':''}</div>`));
-      const del=el('button','del','×');
-      del.onclick=e=>{
-        e.stopPropagation();
-        const W=wm();
-        byRec[id].forEach(p=>{const mm=W[p.id]||{};const md=mm[dayKey(activeDay)]||{};if(md[k]===id)delete md[k];});
-        saveMenus();refreshMenu();
-      };
-      row.appendChild(del);
-      row.onclick=()=>openDetail(r.id);
-      slot.appendChild(row);
+      slot.appendChild(pickedRow(r,who+(r.kcal?' · '+r.kcal+' ккал':''),
+        ()=>byRec[id].forEach(p=>removeFromSlot(p.id,activeDay,k,id))));
     });
-    const add=el('button','add','+ Выбрать рецепт для всех');
+    const add=el('button','add',ids.length?'+ Добавить ещё блюдо для всех':'+ Выбрать рецепт для всех');
     add.style.marginTop=ids.length?'8px':'0';
     add.onclick=()=>openPicker(k);
     slot.appendChild(add);
@@ -995,23 +1001,14 @@ function renderSlotsAll(){
 function renderSlots(){
   if(activePerson==='all'){renderSlotsAll();return;}
   const box=$('#slots');box.innerHTML='';
-  const m=pmenu()[dayKey(activeDay)]||{};
   SLOTS.forEach(([k,label,emo])=>{
     const slot=el('div','slot');
     slot.appendChild(el('div','lab',`<span>${emo} ${label}</span>`));
-    const r=recipes.find(x=>x.id===m[k]);
-    if(r){
-      const p=el('div','picked');
-      const im=r.photo?el('img'):el('div','noimg','🍲');if(r.photo)im.src=r.photo;
-      p.appendChild(im);
-      p.appendChild(el('div','nm',esc(r.name)+`<div class="kc">${r.kcal?r.kcal+' ккал':'ккал —'}</div>`));
-      const del=el('button','del','×');del.onclick=e=>{e.stopPropagation();delete m[k];const W=wm();const mm=W[activePerson]||{};mm[dayKey(activeDay)]=m;W[activePerson]=mm;saveMenus();refreshMenu();};
-      p.appendChild(del);
-      p.onclick=()=>openDetail(r.id);
-      slot.appendChild(p);
-    }else{
-      const add=el('button','add','+ Выбрать рецепт');add.onclick=()=>openPicker(k);slot.appendChild(add);
-    }
+    const list=slotIds(activePerson,activeDay,k).map(id=>recipes.find(x=>x.id===id)).filter(Boolean);
+    list.forEach(r=>slot.appendChild(pickedRow(r,r.kcal?r.kcal+' ккал':'ккал —',()=>removeFromSlot(activePerson,activeDay,k,r.id))));
+    const add=el('button','add',list.length?'+ Добавить ещё блюдо':'+ Выбрать рецепт');
+    if(list.length)add.style.marginTop='8px';
+    add.onclick=()=>openPicker(k);slot.appendChild(add);
     box.appendChild(slot);
   });
 }
@@ -1068,10 +1065,7 @@ function openPicker(slotKey){
       pi.appendChild(el('div',null,`<div class="nm">${esc(r.name)}</div><div class="mt">${prepInfo}${pantryBadge(r)}${r.kcal?r.kcal+' ккал · ':''}${(r.ingredients||[]).length} ингр.</div>`));
       pi.onclick=()=>{
         const targets=forAll?people.map(p=>p.id):[activePerson,...extraPeople];
-        targets.forEach(pid=>{
-          const W=wm();const mm=W[pid]||{};const md=mm[dayKey(activeDay)]||{};
-          md[slotKey]=r.id;mm[dayKey(activeDay)]=md;W[pid]=mm;
-        });
+        targets.forEach(pid=>addToSlot(pid,activeDay,slotKey,r.id));
         saveMenus();closeSheet();refreshMenu();
         toast(forAll?'Добавлено всем ✓':(extraPeople.length?'Добавлено для '+(extraPeople.length+1)+' чел. ✓':'Добавлено в меню ✓'));
       };
@@ -1102,7 +1096,7 @@ function autoBuild(){
         cand=cand.slice().sort((a,b)=>Math.abs((a.kcal||target)-target)-Math.abs((b.kcal||target)-target));
         pick=cand[Math.floor(Math.random()*Math.min(3,cand.length))];
       }else pick=cand[Math.floor(Math.random()*cand.length)];
-      if(pick){m[k]=pick.id;used.add(pick.id);}
+      if(pick){m[k]=[pick.id];used.add(pick.id);}
     });
     mm[dayKey(i)]=m;
   }
@@ -1117,7 +1111,7 @@ function buildShopping(){
   for(let d=0;d<7;d++){
     SLOTS.forEach(([k])=>{
       const ids=new Set();
-      people.forEach(p=>{const m=wm()[p.id]||{};const dm=m[dayKey(d)]||{};if(dm[k])ids.add(dm[k]);});
+      people.forEach(p=>slotIds(p.id,d,k).forEach(id=>ids.add(id)));
       ids.forEach(id=>counts[id]=(counts[id]||0)+1);
     });
   }
@@ -1344,7 +1338,7 @@ function prepStats(id){
       for(let d=0;d<7;d++){
         if(slotISO(wk,d)<start)continue;
         const dm=m[dayKey(d)]||{};
-        SLOTS.forEach(([k])=>{if(dm[k]===id)used++;});
+        SLOTS.forEach(([k])=>{used+=slotList(dm[k]).filter(x=>x===id).length;});
       }
     });
   });
