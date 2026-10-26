@@ -210,6 +210,8 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
 .strow .bad{color:var(--accent);font-weight:700}
 .qbtn{width:32px;height:32px;border-radius:50%;border:1px solid var(--line);background:var(--card);cursor:pointer;font-size:16px;color:var(--ink);flex:0 0 auto}
 .qbtn.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.qbtn:disabled{opacity:.35}
+.pcnt{min-width:26px;text-align:center;font-weight:800;font-size:16px;flex:0 0 auto}
 .pth{width:46px;height:46px;border-radius:10px;object-fit:cover;flex:0 0 auto;cursor:pointer;background:var(--accent-soft)}
 .urg{background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:800;padding:2px 7px;border-radius:12px;margin-left:6px;white-space:nowrap}
 .sechd{display:flex;justify-content:space-between;align-items:center;margin:4px 0 6px;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
@@ -698,9 +700,9 @@ function openDetail(id){
   }
   if(r.prep){
     const s=prepStats(r.id);
-    const info=el('div','hint',s.hasBatch?`В запасе: <b>${Math.max(0,s.free)}</b> из ${s.cooked} порц. (приготовлено, минус разложенное в меню).`:'Эта заготовка ещё не приготовлена.');
+    const info=el('div','hint','Сейчас есть: <b>'+s.have+' порц.</b>');
     info.style.marginTop='24px';b.appendChild(info);
-    const cb=el('button','btn green','✅ Приготовила (записать партию)');cb.style.marginTop='8px';cb.onclick=()=>openCook(r.id);b.appendChild(cb);
+    const cb=el('button','btn green','🍳 Приготовила партию');cb.style.marginTop='8px';cb.onclick=()=>openCook(r.id);b.appendChild(cb);
   }
   const editBtn=el('button','btn ghost','✏️ Редактировать');editBtn.style.marginTop=(r.link||r.prep)?'10px':'24px';editBtn.onclick=()=>openEditor(r);
   const delBtn=el('button','btn ghost','🗑 Удалить рецепт');delBtn.style.cssText='margin-top:10px;color:#c0392b';
@@ -940,15 +942,6 @@ function setSlot(pid,d,k,arr){
 function addToSlot(pid,d,k,id){const a=slotIds(pid,d,k);if(!a.includes(id))a.push(id);setSlot(pid,d,k,a);}
 function removeFromSlot(pid,d,k,id){setSlot(pid,d,k,slotIds(pid,d,k).filter(x=>x!==id));}
 
-function prepUsage(id){
-  // сколько порций заготовки задействовано на выбранной неделе (каждый человек-приём = 1 порция)
-  let n=0;const W=weeks[activeWeek]||{};
-  people.forEach(p=>{
-    const m=W[p.id]||{};
-    for(let d=0;d<7;d++){const dm=m[dayKey(d)]||{};SLOTS.forEach(([k])=>{n+=slotList(dm[k]).filter(x=>x===id).length;});}
-  });
-  return n;
-}
 function renderPrepBar(){
   const box=$('#prepBar');if(!box)return;box.innerHTML='';
   const used={};const W=weeks[activeWeek]||{};
@@ -961,15 +954,11 @@ function renderPrepBar(){
     .filter(e=>e.r&&e.r.prep);
   if(!entries.length){box.style.display='none';return;}
   box.style.display='block';
-  box.appendChild(el('div','lab','<span>❄️ Заготовки на эту неделю</span>'));
+  box.appendChild(el('div','lab','<span>❄️ Заготовки в меню на этой неделе</span>'));
   entries.forEach(e=>{
-    const s=prepStats(e.r.id);
-    let st,ok=true;
-    if(!s.hasBatch){ok=false;st='не приготовлена · нужно '+e.n+' порц. ›';}
-    else if(s.free<0){ok=false;st='не хватает '+(-s.free)+' порц. — приготовить ›';}
-    else st='✅ хватает · останется '+s.free;
-    const row=el('div','preprow'+(ok?'':' bad'),`<span class="nm">❄️ ${esc(e.r.name)}</span><span class="st">${st}</span>`);
-    row.onclick=()=>ok?openDetail(e.r.id):openCook(e.r.id);
+    const h=prepStats(e.r.id).have;
+    const row=el('div','preprow'+(h?'':' bad'),`<span class="nm">❄️ ${esc(e.r.name)}</span><span class="st">${h?'в запасе '+h+' порц.':'нет в запасе'}</span>`);
+    row.onclick=()=>openPrepStock(e.r.id);
     box.appendChild(row);
   });
 }
@@ -1081,7 +1070,7 @@ function openPicker(slotKey){
       const pi=el('div','pi');const im=r.photo?el('img'):el('div','noimg','🍲');if(r.photo)im.src=r.photo;
       pi.appendChild(im);
       let prepInfo='';
-      if(r.prep){const s=prepStats(r.id);prepInfo=!s.hasBatch?'❄️ не приготовлена · ':(s.free>0?'❄️ в запасе '+s.free+' порц. · ':'❄️ запас закончился · ');}
+      if(r.prep){const h=prepStats(r.id).have;prepInfo=h?'❄️ есть '+h+' порц. · ':'❄️ нет в запасе · ';}
       pi.appendChild(el('div',null,`<div class="nm">${esc(r.name)}</div><div class="mt">${prepInfo}${pantryBadge(r)}${r.kcal?r.kcal+' ккал · ':''}${(r.ingredients||[]).length} ингр.</div>`));
       pi.onclick=()=>{
         const targets=forAll?people.map(p=>p.id):[activePerson,...extraPeople];
@@ -1135,13 +1124,10 @@ function buildShopping(){
       ids.forEach(id=>counts[id]=(counts[id]||0)+1);
     });
   }
-  // заготовка готовится партиями: продукты нужны только на те партии, которых ещё не хватает по факту
+  // заготовка: если в запасе есть — ничего не покупаем, если нет — продукты на одну партию
   Object.keys(counts).forEach(id=>{
     const r=recipes.find(x=>x.id===id);
-    if(r&&r.prep){
-      const deficit=Math.max(0,-prepStats(id).free);
-      counts[id]=deficit>0?(r.prepYield?Math.ceil(deficit/r.prepYield):1):0;
-    }
+    if(r&&r.prep)counts[id]=prepStats(id).have>0?0:1;
   });
   const map={};
   Object.entries(counts).forEach(([id,n])=>{
@@ -1414,24 +1400,12 @@ function isoDate(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2
 function slotISO(weekKey,d){const [y,m,dd]=weekKey.split('-').map(Number);return isoDate(new Date(y,m-1,dd+d));}
 function fmtDate(iso){const [y,m,d]=iso.split('-').map(Number);return d+' '+MONTHS_G[m-1].slice(0,3);}
 
-/* Остаток заготовки = сколько приготовлено − сколько приёмов пищи с ней стоит в меню (с даты первой партии) */
+/* Остаток заготовки — простой счётчик: приготовленные порции плюс ручные «+» и «−». С меню не связан. */
 function prepStats(id){
   const r=recipes.find(x=>x.id===id)||{};
   const bs=batches.filter(b=>b.recipeId===id);
-  const cooked=bs.reduce((s,b)=>s+(b.portions||0)+(b.adj||0),0);
-  const start=bs.length?bs.map(b=>b.date).sort()[0]:isoDate(new Date());
-  let used=0;
-  Object.entries(weeks).forEach(([wk,W])=>{
-    people.forEach(p=>{
-      const m=W[p.id]||{};
-      for(let d=0;d<7;d++){
-        if(slotISO(wk,d)<start)continue;
-        const dm=m[dayKey(d)]||{};
-        SLOTS.forEach(([k])=>{used+=slotList(dm[k]).filter(x=>x===id).length;});
-      }
-    });
-  });
-  return {cooked,used,free:cooked-used,hasBatch:bs.length>0,yield:r.prepYield||0,batches:bs};
+  const have=Math.max(0,bs.reduce((sum,b)=>sum+(b.portions||0)+(b.adj||0),0));
+  return {have,hasBatch:bs.length>0,yield:r.prepYield||0,batches:bs};
 }
 
 /* Сопоставление продуктов дома с ингредиентами по названию (приблизительно, по началу слов) */
@@ -1483,7 +1457,7 @@ function openCook(id){
   $('#sheetTitle').textContent='Приготовила заготовку';
   const b=$('#sheetBody');
   b.innerHTML=`<h2 style="margin:0 0 6px;font-size:20px">${esc(r.name)}</h2>
-    <div class="hint">Отметьте, что реально приготовили: приложение будет вести остаток порций и списывать их по мере выкладывания в меню.</div>
+    <div class="hint">Порции прибавятся к тому, что уже есть. Когда съедите — уменьшайте «−» во вкладке «Заготовки».</div>
     <label class="f">Сколько порций получилось</label>
     <input class="t" id="cPortions" type="number" inputmode="numeric" value="${r.prepYield||''}" placeholder="12">
     <label class="f">Когда приготовили</label>
@@ -1514,12 +1488,11 @@ function openCook(id){
 function openPrepStock(id){
   const r=recipes.find(x=>x.id===id);if(!r)return;
   const st=prepStats(id);
-  $('#sheetTitle').textContent='Партии заготовки';
+  $('#sheetTitle').textContent='Заготовка';
   const b=$('#sheetBody');b.innerHTML='';
   b.appendChild(el('h2',null,esc(r.name))).style.cssText='margin:0 0 6px;font-size:20px';
-  b.appendChild(el('div','hint',st.hasBatch
-    ?`Приготовлено всего: <b>${st.cooked}</b> · разложено в меню: <b>${st.used}</b> · свободно: <b>${Math.max(0,st.free)}</b>`
-    :'Партий пока нет — отметьте, когда приготовите.'));
+  b.appendChild(el('div','hint','Сейчас есть: <b>'+st.have+' порц.</b> Съели — «−» во вкладке «Заготовки», доложили — «+».'));
+  if(st.batches.length)b.appendChild(el('h3','sec','Когда готовили'));
   st.batches.slice().sort((a,b2)=>b2.date.localeCompare(a.date)).forEach(bt=>{
     const row=el('div','strow');
     row.appendChild(el('div','tx',`<div class="nm">${fmtDate(bt.date)} · ${bt.portions}${bt.adj?' ('+(bt.adj>0?'+':'')+bt.adj+')':''} порц.</div><div class="sub">${bt.place?PLACES[bt.place]:'место не указано'}</div>`));
@@ -1527,14 +1500,16 @@ function openPrepStock(id){
     del.onclick=()=>{if(confirm('Удалить эту партию?')){batches=batches.filter(x=>x.id!==bt.id);saveBatches();renderStock();refreshMenu();openPrepStock(id);}};
     row.appendChild(del);b.appendChild(row);
   });
-  const more=el('button','btn green','✅ Приготовила ещё партию');more.style.marginTop='18px';more.onclick=()=>openCook(id);b.appendChild(more);
+  const more=el('button','btn green','🍳 Приготовила партию');more.style.marginTop='18px';more.onclick=()=>openCook(id);b.appendChild(more);
   const open=el('button','btn ghost','📖 Открыть рецепт');open.style.marginTop='10px';open.onclick=()=>openDetail(id);b.appendChild(open);
   openSheet();
 }
 function adjustLatest(id,delta){
+  if(delta<0&&prepStats(id).have<=0)return;
   const bs=batches.filter(b=>b.recipeId===id).sort((a,b2)=>b2.date.localeCompare(a.date));
-  if(!bs.length){toast('Сначала отметьте партию');return;}
-  bs[0].adj=(bs[0].adj||0)+delta;saveBatches();renderStock();refreshMenu();
+  if(!bs.length)batches.push({id:'b'+Date.now(),recipeId:id,portions:delta,adj:0,date:isoDate(new Date()),place:'freezer'});
+  else bs[0].adj=(bs[0].adj||0)+delta;
+  saveBatches();renderStock();refreshMenu();
 }
 
 function openPantryView(p){
@@ -1853,28 +1828,24 @@ function renderStock(){
   const c1=el('div','slot');
   c1.appendChild(el('div','lab','<span>🧊 Заготовки</span>'));
   if(!preps.length){
-    c1.appendChild(el('div','hint','Здесь появятся рецепты, отмеченные «❄️ Это заготовка». Приготовили партию — нажмите «✅», и приложение начнёт считать остаток.'));
+    c1.appendChild(el('div','hint','Здесь появятся рецепты, отмеченные «❄️ Это заготовка».'));
+  }else{
+    c1.appendChild(el('div','hint','Сколько порций лежит сейчас. Съели — «−», доложили — «+». Приготовили большую партию — нажмите на название → «Приготовила партию».')).style.marginBottom='4px';
   }
   preps.forEach(r=>{
     const st=prepStats(r.id);
     const row=el('div','strow');
-    let status;
-    if(!st.hasBatch)status='<span class="bad">не приготовлена</span>';
-    else if(st.free<0)status=`<span class="bad">не хватает ${-st.free} порц.</span> · приготовлено ${st.cooked}`;
-    else if(st.free===0)status=`<span class="bad">закончилась</span> · приготовлено ${st.cooked}`;
-    else status=`<span class="ok">свободно ${st.free} из ${st.cooked}</span>`;
     const last=st.batches.slice().sort((a,b2)=>b2.date.localeCompare(a.date))[0];
     const where=last?' · '+fmtDate(last.date)+(last.place?' · '+PLACES[last.place]:''):'';
+    const status=st.have?'<span class="ok">есть '+st.have+' порц.</span>':'<span class="bad">нет</span>';
     const tx=el('div','tx',`<div class="nm">❄️ ${esc(r.name)}</div><div class="sub">${status}${where}</div>`);
     tx.onclick=()=>openPrepStock(r.id);
     row.appendChild(tx);
-    if(st.hasBatch){
-      const minus=el('button','qbtn','−');minus.title='Убавить порцию (съели вне меню)';minus.onclick=()=>adjustLatest(r.id,-1);
-      const plus=el('button','qbtn','+');plus.title='Добавить порцию';plus.onclick=()=>adjustLatest(r.id,1);
-      row.append(minus,plus);
-    }
-    const cook=el('button','qbtn','✅');cook.title='Приготовила партию';cook.onclick=()=>openCook(r.id);
-    row.appendChild(cook);
+    const minus=el('button','qbtn','−');minus.title='Съели порцию';minus.onclick=()=>adjustLatest(r.id,-1);
+    if(!st.have)minus.disabled=true;
+    const cnt=el('div','pcnt',String(st.have));
+    const plus=el('button','qbtn','+');plus.title='Добавить порцию';plus.onclick=()=>adjustLatest(r.id,1);
+    row.append(minus,cnt,plus);
     c1.appendChild(row);
   });
   box.appendChild(c1);
@@ -2225,7 +2196,7 @@ function renderSync(){
 }
 /* ---------------- версия и обновление ----------------
    APP_VERSION нужно менять при каждой публикации: по нему телефон узнаёт, что на сайте есть новее. */
-const APP_VERSION='2026-10-26 · 6';
+const APP_VERSION='2026-10-26 · 7';
 let updLastCheck=0;
 async function siteVersion(){
   const t=await fetch('index.html?check='+Date.now(),{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);return r.text();});
