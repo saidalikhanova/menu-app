@@ -273,6 +273,7 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
   </header>
 
   <main>
+    <button class="btn green" id="updBar" style="display:none;margin-bottom:14px">✨ Есть новая версия приложения — нажмите, чтобы обновить</button>
     <!-- ================= РЕЦЕПТЫ ================= -->
     <section class="view active" id="view-recipes">
       <div class="search">
@@ -403,6 +404,8 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
       <div class="pcard">
         <h3>Данные</h3>
         <div class="hint">Рецептов сохранено: <b id="recCount">0</b>. Всё хранится в этом телефоне.</div>
+        <div class="hint">Версия приложения: <b id="appVer"></b></div>
+        <button class="btn ghost" id="checkUpd" style="margin-top:10px">🔄 Проверить обновление</button>
         <button class="btn ghost" id="exportData" style="margin-top:14px">⬇️ Сохранить копию (файл)</button>
         <button class="btn ghost" id="importData" style="margin-top:10px">⬆️ Загрузить из файла</button>
         <input type="file" id="importFile" accept="application/json" hidden>
@@ -2117,6 +2120,35 @@ function renderSync(){
   $('#syncOff').style.display=syncOn()?'flex':'none';
   setSyncStatus();
 }
+/* ---------------- версия и обновление ----------------
+   APP_VERSION нужно менять при каждой публикации: по нему телефон узнаёт, что на сайте есть новее. */
+const APP_VERSION='2026-10-26 · 3';
+let updLastCheck=0;
+async function siteVersion(){
+  const t=await fetch('index.html?check='+Date.now(),{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);return r.text();});
+  const m=t.match(/const APP_VERSION='([^']+)'/);
+  return m?m[1]:null;
+}
+function reloadFresh(){location.replace(location.pathname.replace(/[^/]*$/,'')+'index.html?v='+Date.now());}
+async function checkUpdate(manual){
+  updLastCheck=Date.now();
+  try{
+    const v=await siteVersion();
+    const newer=v&&v!==APP_VERSION;
+    $('#updBar').style.display=newer?'flex':'none';
+    if(manual){
+      if(newer){toast('Обновляю до версии '+v+'…');setTimeout(reloadFresh,700);}
+      else toast('У вас последняя версия ✓');
+    }
+  }catch(e){if(manual)toast('Нет связи с сайтом — проверьте интернет');}
+}
+$('#appVer').textContent=APP_VERSION;
+$('#checkUpd').onclick=()=>checkUpdate(true);
+$('#updBar').onclick=reloadFresh;
+
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible'&&Date.now()-updLastCheck>30*60000)checkUpdate(false);
+});
 document.addEventListener('visibilitychange',()=>{
   if(document.visibilityState!=='visible'||!syncOn())return;
   if(Date.now()-(syncCfg().lastSyncAt||0)>30000)syncNow(false);
@@ -2134,6 +2166,7 @@ async function init(){
   syncQuiet=false;
   if(!recipes.length&&!LS.get('seeded',false))await seedDemo();
   if(syncOn())syncNow(false);
+  checkUpdate(false);
 }
 async function seedDemo(){
   LS.set('seeded',true);
