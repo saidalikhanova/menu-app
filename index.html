@@ -236,6 +236,9 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
 .catrow .tx{flex:1;min-width:0;font-size:15px;line-height:1.35}
 .catrow .tx .q{color:var(--muted);font-size:12px}
 .catrow .hbtn{background:none;border:0;font-size:16px;cursor:pointer;color:var(--muted);padding:4px 6px;flex:0 0 auto}
+.catrow .st{font-size:15px;flex:0 0 auto;min-width:22px;text-align:center}
+.undo{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:61;display:none;align-items:center;gap:12px;background:var(--ink);color:#fff;padding:10px 12px 10px 18px;border-radius:30px;font-size:14px;font-weight:600;max-width:92%;box-shadow:0 6px 18px rgba(0,0,0,.25)}
+.undo button{background:rgba(255,255,255,.18);color:#fff;border:0;border-radius:20px;padding:7px 12px;font-weight:700;cursor:pointer;white-space:nowrap}
 /* shopping */
 .shoprow{display:flex;align-items:center;gap:6px;padding:9px 0;border-bottom:1px solid var(--line)}
 .shoprow:last-child{border-bottom:0}
@@ -311,27 +314,33 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
     <!-- ================= ПОКУПКИ ================= -->
     <section class="view" id="view-shop">
       <div class="seg" id="shopSeg">
-        <button data-m="list" class="on">🛒 Купить</button>
-        <button data-m="cat">⭐ Мои продукты</button>
+        <button data-m="buy" class="on">🛒 Купить</button>
+        <button data-m="home">🏠 Дома</button>
+        <button data-m="all">⭐ Все</button>
       </div>
-      <div id="shopModeList">
-        <button class="btn primary" id="buildShop">🛒 Собрать список на неделю</button>
-        <div class="hint" style="margin:8px 0 0;text-align:center">Соберёт продукты из меню всей семьи — для той недели, что выбрана во вкладке «Меню». Общие блюда — один раз. Продукты из «Запасов» сами уходят в «Есть дома» — проверьте, хватает ли количества (🏠 вернёт в покупки). Приготовленные заготовки не покупаются заново. Ваши добавленные вручную пункты сохранятся.</div>
-        <button class="btn green" id="aiShop" style="margin-top:12px;display:none">✨ Объединить и разложить по отделам (ИИ)</button>
-        <div id="shopList" style="margin-top:14px"></div>
-        <div class="search" style="margin-top:14px">
-          <input id="newItem" placeholder="Добавить своё: хлеб, молоко…" autocomplete="off">
+      <!-- 🛒 Купить: что нужно сейчас -->
+      <div id="pmBuy">
+        <div class="search">
+          <input id="newItem" placeholder="Что купить? Молоко, хлеб…" autocomplete="off">
           <button class="btn sm primary" id="addItem" style="flex:0 0 auto">＋</button>
         </div>
         <div class="chips" id="newItemSugg" style="padding:8px 0 0"></div>
-        <button class="btn ghost" id="clearDone" style="margin-top:12px;display:none">✔ Убрать купленное из списка</button>
+        <div id="shopList" style="margin-top:12px"></div>
+        <button class="btn green" id="aiShop" style="margin-top:4px;display:none">✨ Объединить и разложить по отделам (ИИ)</button>
+        <div class="divider"><span>из меню недели</span></div>
+        <button class="btn ghost" id="buildShop">🍽 Добавить продукты из меню</button>
+        <div class="hint" style="margin-top:6px">Добавит в «Купить» продукты из меню всей семьи на неделю, выбранную во вкладке «Меню». То, что уже есть дома, не добавит, а покажет отдельно, чтобы вы проверили количество. Ваши пункты не пропадут.</div>
       </div>
-      <div id="shopModeCat" style="display:none">
-        <div class="hint" style="margin:0 0 10px">Всё, что вы когда-либо покупали, сохраняется здесь. Тап по продукту — добавить в список «Купить» (ещё тап — убрать). Перед магазином отметьте то, что нужно сейчас.</div>
+      <!-- 🏠 Дома: что лежит дома -->
+      <div id="pmHome" style="display:none"><div id="homeBody"></div></div>
+      <!-- ⭐ Все мои продукты -->
+      <div id="pmAll" style="display:none">
+        <div class="hint" style="margin:0 0 10px">Все ваши продукты по отделам. 🏠 — есть дома, 🛒 — в списке «Купить». Тап — добавить в «Купить» или убрать оттуда.</div>
         <div class="search">
           <input id="catSearch" placeholder="Найти или добавить продукт…" autocomplete="off">
           <button class="btn sm primary" id="catAdd" style="flex:0 0 auto">＋</button>
         </div>
+        <button class="btn green" id="aiCat" style="margin-top:10px;display:none">✨ Разложить мои продукты по отделам (ИИ)</button>
         <div id="catList" style="margin-top:12px"></div>
       </div>
     </section>
@@ -426,11 +435,11 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
     </button>
     <button data-tab="shop">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1.5"/><circle cx="19" cy="21" r="1.5"/><path d="M2 3h3l2.6 12.5a2 2 0 0 0 2 1.5h8.7a2 2 0 0 0 2-1.6L22 8H6"/></svg>
-      Покупки
+      Продукты
     </button>
     <button data-tab="stock">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>
-      Запасы
+      Заготовки
     </button>
     <button data-tab="me">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
@@ -448,6 +457,7 @@ ol.steps li:before{content:counter(s);position:absolute;left:0;top:2px;width:28p
 </div>
 
 <div class="toast" id="toast"></div>
+<div class="undo" id="undo"><span id="undoText"></span><button id="undoBtn">Отменить</button></div>
 
 <script>
 /* ---------------- storage ---------------- */
@@ -519,7 +529,7 @@ const DOW=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
 const SLOTS=[['breakfast','Завтрак','🌅'],['lunch','Обед','🍲'],['dinner','Ужин','🌙'],['snack','Перекус','🍎']];
 let shopping=LS.get('shopping',{items:[]});
 let catalog=LS.get('catalog',{});   // «Мои продукты»: ключ (имя в нижнем регистре) → {name,section,qty,count,last}
-let shopMode='list';
+let shopMode='buy';
 let batches=LS.get('batches',[]);   // факт приготовления заготовок: {id,recipeId,portions,adj,date:'YYYY-MM-DD',place}
 let pantry=LS.get('pantry',[]);     // продукты дома: {id,name,qty,place,urgent,photoId}
 let photosCache={};                 // photoId → dataURL (фото продуктов, лежат в IndexedDB 'menuapp-photos')
@@ -529,7 +539,10 @@ function cleanupPhoto(id){          // удалить фото, если на н
 }
 const PLACES={fridge:'🧊 холодильник',freezer:'❄️ морозилка',shelf:'🗄 шкаф'};
 function saveBatches(){LS.set('batches',batches);}
-function savePantry(){LS.set('pantry',pantry);}
+function savePantry(){
+  pantry.forEach(p=>remember({name:p.name,qty:p.qty,place:p.place},true));   // всё, что дома, — тоже «мои продукты»
+  LS.set('pantry',pantry);LS.set('catalog',catalog);
+}
 function wm(){return weeks[activeWeek]=weeks[activeWeek]||{};}
 function pmenu(){return wm()[activePerson]||{};}
 function saveMenus(){LS.set('weeks',weeks);}
@@ -1145,72 +1158,246 @@ function buildShopping(){
     const p=pantryMatch(it.name);
     return {id:'s'+Date.now()+'_'+i,name:it.name,qty:it.qtys.filter(Boolean).join(' + '),have:!!p,stock:p?(p.qty||'есть'):'',done:false,manual:false,section:''};
   });
-  const manual=(shopping.items||[]).filter(x=>x.manual&&!x.done);
-  shopping={items:[...items,...manual],created:Date.now(),week:activeWeek};
-  LS.set('shopping',shopping);rememberAll(items);renderShopping();
-  const home=items.filter(i=>i.have).length;
-  toast(items.length?'Список собран: '+items.length+' поз.'+(home?', '+home+' уже дома':'')+' ✓':'В меню недели пока нет блюд');
+  // ваши пункты остаются; продукты из меню, которые вы уже вписали сами, не дублируем
+  const manual=(shopping.items||[]).filter(x=>x.manual&&!x.done&&!x.have);
+  const mk=new Set(manual.map(i=>catKey(i.name)));
+  const fresh=items.filter(i=>!mk.has(catKey(i.name)));
+  shopping={items:[...manual,...fresh],created:Date.now(),week:activeWeek};
+  LS.set('shopping',shopping);rememberAll(items);refreshProducts();
+  const home=fresh.filter(i=>i.have).length,buy=fresh.length-home;
+  toast(items.length?'Из меню: '+buy+' в «Купить»'+(home?', '+home+' уже дома':'')+' ✓':'В меню этой недели пока нет блюд');
 }
-/* ---- «Мои продукты»: всё, что попадало в список, запоминается навсегда ---- */
+/* ---- «Продукты»: один список ваших продуктов, у каждого состояние «Дома» или «Купить» ----
+   catalog — все продукты, которые когда-либо были (отдел, привычное количество, место);
+   pantry  — что сейчас дома; shopping.items — что купить (have:true — «из меню, но уже дома»). */
 const SECTION_ORDER=['🥬 Овощи и фрукты','🥩 Мясо и рыба','🥛 Молочное и яйца','🥖 Бакалея и хлеб','🧊 Заморозка','🧂 Специи и соусы','✍️ Прочее'];
+const SECTION_PLACE={'🧊 Заморозка':'freezer','🥛 Молочное и яйца':'fridge','🥩 Мясо и рыба':'fridge','🥬 Овощи и фрукты':'fridge','🥖 Бакалея и хлеб':'shelf','🧂 Специи и соусы':'shelf'};
 function catKey(n){return (n||'').trim().toLowerCase().replace(/ё/g,'е');}
+/* отдел по названию, без ИИ: порядок важен (замороженное, специи и молочное проверяются раньше овощей и бакалеи) */
+const SECTION_GUESS=[
+  ['🧊 Заморозка',['заморож','мороженое']],
+  ['🧂 Специи и соусы',['по вкусу','соль','специ','приправ','соус','уксус','горчиц','паприк','кориц','куркум','хмели','базилик','орегано','тимьян','лавров','кетчуп','майонез','перец черн','черный перец','перец молот','ванил']],
+  ['🥛 Молочное и яйца',['молок','кефир','йогурт','творог','сыр','сметан','сливк','ряженк','масло сливоч','сливочное масло','яйц','моцарел','пармезан','фета','брынз']],
+  ['🥩 Мясо и рыба',['курин','курица','индейк','фарш','говяд','свинин','баран','мясо','филе','грудк','бедр','семг','лосос','рыба','треск','форел','креветк','колбас','сосиск','бекон','ветчин']],
+  ['🥬 Овощи и фрукты',['огур','помид','черри','перец','лук','чеснок','картоф','морков','кабач','брокк','капуст','баклаж','батат','свекл','тыкв','сельдер','зелень','укроп','петруш','кинз','шпинат','авокадо','яблок','банан','апельсин','лимон','лайм','мандарин','груш','виноград','черник','клубник','малин','ягод','арбуз','дын','фрукт','овощ','имбир','шампин','гриб','ананас']],
+  ['🥖 Бакалея и хлеб',['хлеб','лаваш','батон','круп','гречк','рис','орзо','спагет','макарон','паста','мука','сахар','овсян','хлопь','нут','гарбанзо','маш','чечевиц','фасол','горох','крахмал','разрыхл','сода','псиллиум','кунжут','миндал','орех','кокос','шоколад','какао','чай','кофе','мед','тунец','атун','консерв','оливк','маслин','кукуруз','масло','варень','печень','завтрак','cheerios','мюсли','изюм','финик','бумага']],
+];
+function guessSection(name){
+  const n=catKey(name),words=n.split(/[^a-zа-я]+/).filter(Boolean);
+  for(const [sec,keys] of SECTION_GUESS)
+    if(keys.some(k=>k.includes(' ')?n.includes(k):words.some(w=>w.startsWith(k))))return sec;
+  return '';
+}
+function plainQty(q){q=(q||'').trim();return (!q||/[+×—]/.test(q)||q.length>20)?'':q;}   // суммы «2 шт + 1 шт ×2» и пояснения не храним как количество
 function remember(it,quiet){
   const k=catKey(it.name);if(!k)return;
   const c=catalog[k]||{name:it.name.trim(),section:'',qty:'',count:0,last:null};
   if(it.section&&it.section!=='✍️ Своё')c.section=it.section;
-  if(it.qty&&!/[+×—]/.test(it.qty)&&it.qty.length<=20)c.qty=it.qty;   // суммы «2 шт + 1 шт ×2» и пояснения как привычное количество не храним
+  if(!c.section)c.section=guessSection(c.name);
+  if(plainQty(it.qty))c.qty=plainQty(it.qty);
+  if(it.place)c.place=it.place;
   catalog[k]=c;
   if(!quiet)LS.set('catalog',catalog);
 }
 function rememberAll(items){items.forEach(i=>remember(i,true));LS.set('catalog',catalog);}
-function listEntry(k){return (shopping.items||[]).find(i=>!i.done&&catKey(i.name)===k);}
-function toggleFromCatalog(k){
-  const ex=listEntry(k);
+function secOf(k,item){
+  const c=catalog[k];
+  return (c&&c.section)||(item&&item.section&&item.section!=='✍️ Своё'?item.section:'')||'🛒 Без отдела';
+}
+function sortSections(a,b){
+  const ia=SECTION_ORDER.indexOf(a),ib=SECTION_ORDER.indexOf(b);
+  return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b,'ru');
+}
+function listEntry(k){return (shopping.items||[]).find(i=>!i.have&&catKey(i.name)===k);}
+function homeEntry(k){return pantry.find(p=>catKey(p.name)===k);}
+function saveShop(){LS.set('shopping',shopping);}
+function refreshProducts(){renderShopping();renderHome();renderCatalog();renderShopSeg();renderRecipes();}
+
+/* --- «Отменить» на 5 секунд --- */
+let undoFn=null,undoTimer=null;
+function showUndo(text,fn){
+  undoFn=fn;$('#undoText').textContent=text;$('#undo').style.display='flex';
+  clearTimeout(undoTimer);undoTimer=setTimeout(()=>{$('#undo').style.display='none';undoFn=null;},5000);
+}
+
+/* --- переходы между состояниями --- */
+function addBuy(k){
+  const c=catalog[k];if(!c)return;
   shopping.items=shopping.items||[];
-  if(ex&&!ex.have){shopping.items=shopping.items.filter(i=>i.done||i.have||catKey(i.name)!==k);}   // все одноимённые строки
-  else if(ex&&ex.have){ex.have=false;}
-  else{
-    const c=catalog[k];
-    shopping.items.push({id:'s'+Date.now()+Math.random().toString(36).slice(2,5),name:c.name,qty:c.qty||'',have:false,done:false,manual:true,section:c.section||''});
+  const fromMenu=(shopping.items||[]).find(i=>i.have&&catKey(i.name)===k);
+  if(listEntry(k))return;
+  if(fromMenu){fromMenu.have=false;fromMenu.manual=true;}
+  else shopping.items.push({id:'s'+Date.now()+Math.random().toString(36).slice(2,5),name:c.name,qty:c.qty||'',have:false,done:false,manual:true,section:c.section||''});
+  saveShop();
+}
+function removeBuy(k){shopping.items=(shopping.items||[]).filter(i=>i.have||catKey(i.name)!==k);saveShop();}
+function toggleBuy(k){if(listEntry(k))removeBuy(k);else addBuy(k);refreshProducts();}
+function markBought(k){
+  const item=listEntry(k);if(!item)return;
+  const snapShop=JSON.stringify(shopping),snapPantry=JSON.stringify(pantry),snapCat=JSON.stringify(catalog);
+  remember(item,true);
+  const c=catalog[k],today=isoDate(new Date());
+  c.count=(c.count||0)+1;c.last=today;
+  removeBuy(k);
+  const p=homeEntry(k);
+  if(p){p.since=today;p.urgent=false;if(c.qty)p.qty=c.qty;}
+  else pantry.push({id:'p'+Date.now(),name:c.name,qty:c.qty||plainQty(item.qty),place:c.place||SECTION_PLACE[c.section]||'',urgent:false,since:today});
+  savePantry();LS.set('catalog',catalog);refreshProducts();
+  showUndo('«'+c.name+'» → 🏠 Дома',()=>{shopping=JSON.parse(snapShop);pantry=JSON.parse(snapPantry);catalog=JSON.parse(snapCat);saveShop();savePantry();LS.set('catalog',catalog);refreshProducts();});
+}
+function finishHome(p,toBuy){
+  const k=catKey(p.name);
+  remember({name:p.name,qty:p.qty,place:p.place},true);LS.set('catalog',catalog);
+  pantry=pantry.filter(x=>x.id!==p.id);cleanupPhoto(p.photoId);savePantry();
+  if(toBuy)addBuy(k);
+  refreshProducts();
+  toast(toBuy?'«'+p.name+'» → 🛒 Купить':'«'+p.name+'» закончился');
+}
+
+/* --- 🛒 Купить --- */
+function buyRow(i){
+  const k=catKey(i.name);
+  const row=el('div','catrow');
+  row.appendChild(el('div','ck',''));
+  row.appendChild(el('div','tx',esc(i.name)+(i.qty?' <span class="q">'+esc(i.qty)+'</span>':'')));
+  const del=el('button','hbtn','×');del.title='Не покупать';
+  del.onclick=e=>{e.stopPropagation();removeBuy(k);refreshProducts();};
+  row.appendChild(del);
+  row.onclick=()=>markBought(k);
+  return row;
+}
+function renderShopping(){
+  const box=$('#shopList');if(!box)return;box.innerHTML='';
+  const items=shopping.items||[];
+  renderShopSeg();
+  $('#buildShop').textContent='🍽 Добавить продукты из меню на '+weekLabel();
+  const act=items.filter(i=>!i.have), home=items.filter(i=>i.have);
+  $('#aiShop').style.display=(act.length>1&&LS.get('apiKey',''))?'flex':'none';
+  if(!act.length){
+    box.appendChild(el('div','empty','<div class="big">🛒</div>Список пуст.<div class="hint" style="margin-top:6px">Впишите продукт выше, отметьте нужное в «⭐ Все» или добавьте продукты из меню недели кнопкой ниже. В магазине тап по продукту — купила, он уйдёт в «🏠 Дома».</div>'));
+  }else{
+    const bySec={};act.forEach(i=>{const s=secOf(catKey(i.name),i);(bySec[s]=bySec[s]||[]).push(i);});
+    Object.keys(bySec).sort(sortSections).forEach(sec=>{
+      const card=el('div','slot');
+      card.appendChild(el('div','lab','<span>'+esc(sec)+'</span><span>'+bySec[sec].length+'</span>'));
+      bySec[sec].forEach(i=>card.appendChild(buyRow(i)));
+      box.appendChild(card);
+    });
+    box.appendChild(el('div','hint','Тап по продукту — купила (уйдёт в «🏠 Дома»). × — не покупать.')).style.margin='-4px 0 12px';
   }
-  LS.set('shopping',shopping);renderCatalog();renderShopSeg();
+  if(home.length){
+    const card=el('div','slot');
+    const lab=shopping.week?'🏠 Из меню на '+weekLabel(shopping.week)+' — уже дома':'🏠 Из меню — уже дома';
+    card.appendChild(el('div','lab','<span>'+esc(lab)+'</span>'));
+    card.appendChild(el('div','hint','Проверьте, хватит ли. Если нет — «＋ купить».'));
+    home.forEach(i=>{
+      const row=el('div','catrow');
+      row.appendChild(el('div','tx',esc(i.name)+' <span class="q">'+esc([i.qty?'нужно '+i.qty:'',i.stock?'дома '+i.stock:''].filter(Boolean).join(' · '))+'</span>'));
+      const b=el('button','btn sm ghost','＋ купить');
+      b.onclick=e=>{e.stopPropagation();remember(i);addBuy(catKey(i.name));refreshProducts();};
+      row.appendChild(b);card.appendChild(row);
+    });
+    box.appendChild(card);
+  }
 }
-function addToCatalogAndList(name){
-  name=name.trim();if(!name)return;
-  const k=catKey(name);
-  if(!catalog[k])remember({name,section:'',qty:''});
-  if(!listEntry(k)||listEntry(k).have)toggleFromCatalog(k);
+function renderShopSeg(){
+  const n=(shopping.items||[]).filter(i=>!i.have).length;
+  const labels={buy:'🛒 Купить'+(n?' ('+n+')':''),home:'🏠 Дома'+(pantry.length?' ('+pantry.length+')':''),all:'⭐ Все'};
+  document.querySelectorAll('#shopSeg button').forEach(b=>{b.classList.toggle('on',b.dataset.m===shopMode);b.textContent=labels[b.dataset.m];});
+  $('#pmBuy').style.display=shopMode==='buy'?'block':'none';
+  $('#pmHome').style.display=shopMode==='home'?'block':'none';
+  $('#pmAll').style.display=shopMode==='all'?'block':'none';
 }
+function renderNewItemSugg(){
+  const box=$('#newItemSugg');if(!box)return;box.innerHTML='';
+  const q=catKey($('#newItem').value);if(!q)return;
+  Object.entries(catalog).filter(([k])=>k.includes(q)&&!listEntry(k)).slice(0,6).forEach(([k,c])=>{
+    const ch=el('div','chip','＋ '+esc(c.name)+(homeEntry(k)?' 🏠':''));
+    ch.onclick=()=>{addBuy(k);$('#newItem').value='';renderNewItemSugg();refreshProducts();};
+    box.appendChild(ch);
+  });
+}
+function addManualItem(){
+  const v=$('#newItem').value.trim();if(!v)return;
+  const k=catKey(v);
+  if(!catalog[k])remember({name:v,section:'',qty:''});
+  addBuy(k);
+  $('#newItem').value='';renderNewItemSugg();refreshProducts();
+}
+async function askHaiku(prompt,max){
+  const key=LS.get('apiKey','');if(!key)throw new Error('вставьте API-ключ во вкладке «Я»');
+  const resp=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
+    body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:max||2000,messages:[{role:'user',content:prompt}]})
+  });
+  if(!resp.ok){const t=await resp.text();throw new Error(resp.status+' '+t.slice(0,120));}
+  const data=await resp.json();
+  return JSON.parse(data.content[0].text.trim().replace(/^```json?/,'').replace(/```$/,'').trim());
+}
+const SECTIONS_PROMPT='Отделы: 🥬 Овощи и фрукты, 🥩 Мясо и рыба, 🥛 Молочное и яйца, 🥖 Бакалея и хлеб, 🧊 Заморозка, 🧂 Специи и соусы, ✍️ Прочее.';
+async function aiOrganizeShopping(){
+  const act=(shopping.items||[]).filter(i=>!i.have);
+  if(!act.length){toast('Список пуст');return;}
+  const btn=$('#aiShop');const orig=btn.innerHTML;btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Объединяю…';
+  try{
+    const lines=act.map(i=>i.name+(i.qty?' — '+i.qty:''));
+    const res=await askHaiku('Вот список продуктов для покупки. Некоторые повторяются, количества могут быть перечислены через «+», а «×2» означает умножить на два. Объедини одинаковые продукты, сложи количества, где это возможно, и разложи по отделам магазина. Верни СТРОГО JSON без markdown: {"sections":[{"name":"🥬 Овощи и фрукты","items":[{"name":"Огурец","qty":"5 шт"}]}]}. '+SECTIONS_PROMPT+' Используй подходящие, пустые не включай. Не выдумывай продукты, которых нет в списке. Пиши по-русски.\n\nСписок:\n'+lines.join('\n'));
+    const keep=(shopping.items||[]).filter(i=>i.have);
+    const manualKeys=new Set(act.filter(i=>i.manual).map(i=>catKey(i.name)));
+    const items=[];let n=0;
+    (res.sections||[]).forEach(s=>(s.items||[]).forEach(it=>{
+      // добавленное вручную должно пережить повторную сборку из меню
+      if(it&&it.name)items.push({id:'s'+Date.now()+'_'+(n++),name:it.name,qty:it.qty||'',have:false,done:false,manual:manualKeys.has(catKey(it.name)),section:s.name||''});
+    }));
+    if(!items.length)throw new Error('пустой ответ');
+    shopping.items=[...items,...keep];saveShop();rememberAll(items);refreshProducts();
+    toast('Разложено по отделам ✓');
+  }catch(err){toast('Не получилось: '+err.message);}
+  finally{btn.disabled=false;btn.innerHTML=orig;}
+}
+
+/* --- ⭐ Все мои продукты --- */
 function catRow(k,c){
-  const ex=listEntry(k),on=!!(ex&&!ex.have);
-  const row=el('div','catrow'+(on?' on':''));
-  row.appendChild(el('div','ck',on?'✓':''));
+  const inBuy=!!listEntry(k),atHome=!!homeEntry(k);
+  const row=el('div','catrow'+(inBuy?' on':''));
+  row.appendChild(el('div','ck',inBuy?'✓':''));
   const sub=[c.qty,c.count?'брала '+c.count+' раз':''].filter(Boolean).join(' · ');
   row.appendChild(el('div','tx',esc(c.name)+(sub?' <span class="q">'+esc(sub)+'</span>':'')));
+  row.appendChild(el('div','st',(atHome?'🏠':'')+(inBuy?'🛒':'')));
   const del=el('button','hbtn','×');del.title='Убрать из моих продуктов';
-  del.onclick=e=>{e.stopPropagation();if(confirm('Убрать «'+c.name+'» из ваших продуктов?')){delete catalog[k];LS.set('catalog',catalog);renderCatalog();}};
+  del.onclick=e=>{
+    e.stopPropagation();
+    if(!confirm('Убрать «'+c.name+'» из ваших продуктов? Он исчезнет и из «Дома», и из «Купить».'))return;
+    delete catalog[k];LS.set('catalog',catalog);
+    removeBuy(k);
+    pantry.filter(p=>catKey(p.name)===k).forEach(p=>cleanupPhoto(p.photoId));
+    pantry=pantry.filter(p=>catKey(p.name)!==k);LS.set('pantry',pantry);
+    refreshProducts();
+  };
   row.appendChild(del);
-  row.onclick=()=>toggleFromCatalog(k);
+  row.onclick=()=>toggleBuy(k);
   return row;
 }
 function renderCatalog(){
   const box=$('#catList');if(!box)return;box.innerHTML='';
   const q=catKey($('#catSearch').value);
   const all=Object.entries(catalog);
+  $('#aiCat').style.display=(all.some(([,c])=>!c.section)&&LS.get('apiKey',''))?'flex':'none';
   if(!all.length){
-    box.appendChild(el('div','empty','<div class="big">⭐</div>Пока пусто. Всё, что попадёт в список покупок (из меню, ИИ или вручную), будет сохраняться здесь.<div class="hint" style="margin-top:6px">Можно добавить продукт прямо сейчас — в поле выше.</div>'));
+    box.appendChild(el('div','empty','<div class="big">⭐</div>Пока пусто. Сюда попадает всё, что вы добавляете в «Купить» или в «Дома».'));
     return;
   }
   const list=all.filter(([k])=>!q||k.includes(q)).sort((a,b)=>a[1].name.localeCompare(b[1].name,'ru'));
   if(q&&!catalog[q]){
-    const add=el('button','btn ghost','＋ Добавить «'+esc($('#catSearch').value.trim())+'» в список');
-    add.style.marginBottom='12px';add.onclick=()=>{addToCatalogAndList($('#catSearch').value);$('#catSearch').value='';renderCatalog();};
+    const add=el('button','btn ghost','＋ Добавить «'+esc($('#catSearch').value.trim())+'» в «Купить»');
+    add.style.marginBottom='12px';add.onclick=()=>$('#catAdd').click();
     box.appendChild(add);
   }
   const card=(title,rows)=>{
     const c=el('div','slot');
-    const n=rows.filter(([k])=>{const e=listEntry(k);return e&&!e.have;}).length;
-    c.appendChild(el('div','lab','<span>'+esc(title)+'</span><span>'+(n?'в списке '+n:'')+'</span>'));
+    const n=rows.filter(([k])=>listEntry(k)).length;
+    c.appendChild(el('div','lab','<span>'+esc(title)+'</span><span>'+(n?'🛒 '+n:'')+'</span>'));
     rows.forEach(([k,v])=>c.appendChild(catRow(k,v)));
     box.appendChild(c);
   };
@@ -1219,118 +1406,20 @@ function renderCatalog(){
     if(freq.length>=3)card('⭐ Покупаю чаще всего',freq);
   }
   const bySec={};list.forEach(e=>{const s=e[1].section||'🛒 Без отдела';(bySec[s]=bySec[s]||[]).push(e);});
-  Object.keys(bySec).sort((a,b)=>{
-    const ia=SECTION_ORDER.indexOf(a),ib=SECTION_ORDER.indexOf(b);
-    return (ia<0?99:ia)-(ib<0?99:ib)||a.localeCompare(b,'ru');
-  }).forEach(s=>card(s,bySec[s]));
+  Object.keys(bySec).sort(sortSections).forEach(s=>card(s,bySec[s]));
 }
-function renderShopSeg(){
-  const n=(shopping.items||[]).filter(i=>!i.done&&!i.have).length;
-  document.querySelectorAll('#shopSeg button').forEach(b=>{
-    b.classList.toggle('on',b.dataset.m===shopMode);
-    if(b.dataset.m==='list')b.textContent='🛒 Купить'+(n?' ('+n+')':'');
-  });
-  $('#shopModeList').style.display=shopMode==='list'?'block':'none';
-  $('#shopModeCat').style.display=shopMode==='cat'?'block':'none';
-}
-function renderNewItemSugg(){
-  const box=$('#newItemSugg');if(!box)return;box.innerHTML='';
-  const q=catKey($('#newItem').value);if(!q)return;
-  Object.entries(catalog).filter(([k])=>k.includes(q)&&!(listEntry(k)&&!listEntry(k).have)).slice(0,6).forEach(([k,c])=>{
-    const ch=el('div','chip','＋ '+esc(c.name));
-    ch.onclick=()=>{toggleFromCatalog(k);$('#newItem').value='';renderNewItemSugg();renderShopping();};
-    box.appendChild(ch);
-  });
-}
-
-function shopRow(i){
-  const row=el('div','shoprow'+(i.done?' done':''));
-  const txt=el('div','tx',esc(i.name)+(i.qty?' <span class="q">'+esc(i.qty)+'</span>':'')+(i.have&&i.stock?' <span class="q">· дома: '+esc(i.stock)+'</span>':''));
-  txt.onclick=()=>{
-    i.done=!i.done;
-    if(i.done){                                          // куплено → учитываем в «Моих продуктах»
-      remember(i,true);const c=catalog[catKey(i.name)];c.count=(c.count||0)+1;c.last=isoDate(new Date());LS.set('catalog',catalog);
-    }
-    LS.set('shopping',shopping);renderShopping();
-  };
-  const hv=el('button','hbtn',i.have?'↩':'🏠');
-  hv.title=i.have?'Вернуть в покупки':'Уже есть дома';
-  hv.onclick=e=>{e.stopPropagation();i.have=!i.have;i.done=false;LS.set('shopping',shopping);renderShopping();};
-  const del=el('button','hbtn','×');
-  del.onclick=e=>{e.stopPropagation();shopping.items=shopping.items.filter(x=>x.id!==i.id);LS.set('shopping',shopping);renderShopping();};
-  row.append(txt,hv,del);return row;
-}
-function renderShopping(){
-  const box=$('#shopList');if(!box)return;box.innerHTML='';
-  const items=shopping.items||[];
-  renderShopSeg();
-  $('#buildShop').textContent='🛒 Собрать список на '+weekLabel();
-  if(shopping.week&&items.length){
-    const other=shopping.week!==activeWeek;
-    const note=el('div','hint',(other?'⚠️ ':'')+'Список собран для недели '+weekLabel(shopping.week)+(other?'. Сейчас в «Меню» выбрана другая неделя — соберите заново, если нужно.':'.'));
-    note.style.margin='0 0 10px';box.appendChild(note);
-  }
-  $('#clearDone').style.display=items.some(i=>i.done)?'flex':'none';
-  $('#aiShop').style.display=(items.some(i=>!i.have)&&LS.get('apiKey',''))?'flex':'none';
-  if(!items.length){
-    box.appendChild(el('div','empty','<div class="big">🛒</div>Нажмите кнопку выше — список соберётся из меню недели.<div class="hint" style="margin-top:6px">Тап по продукту — куплено. 🏠 — уже есть дома. × — убрать.</div>'));
-    return;
-  }
-  const act=items.filter(i=>!i.have), home=items.filter(i=>i.have);
-  const bySec={};act.forEach(i=>{const s=i.section||'';(bySec[s]=bySec[s]||[]).push(i);});
-  Object.entries(bySec).forEach(([sec,list])=>{
-    const card=el('div','slot');
-    card.appendChild(el('div','lab','<span>'+esc(sec||'🛒 Купить')+'</span><span>'+list.filter(i=>i.done).length+'/'+list.length+'</span>'));
-    list.forEach(i=>card.appendChild(shopRow(i)));
-    box.appendChild(card);
-  });
-  if(home.length){
-    const card=el('div','slot');card.style.opacity='.7';
-    card.appendChild(el('div','lab','<span>🏠 Есть дома</span>'));
-    home.forEach(i=>card.appendChild(shopRow(i)));
-    box.appendChild(card);
-  }
-}
-async function aiOrganizeShopping(){
-  const key=LS.get('apiKey','');if(!key){toast('Вставьте API-ключ во вкладке «Я»');return;}
-  const act=(shopping.items||[]).filter(i=>!i.have);
-  if(!act.length){toast('Список пуст');return;}
-  const btn=$('#aiShop');const orig=btn.innerHTML;btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Объединяю…';
+async function aiCategorizeCatalog(){
+  const todo=Object.entries(catalog).filter(([,c])=>!c.section);
+  if(!todo.length)return;
+  const btn=$('#aiCat');const orig=btn.innerHTML;btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Раскладываю…';
   try{
-    const lines=act.map(i=>i.name+(i.qty?' — '+i.qty:''));
-    const prompt='Вот список продуктов для покупки. Некоторые повторяются, количества могут быть перечислены через «+», а «×2» означает умножить на два. Объедини одинаковые продукты, сложи количества, где это возможно, и разложи по отделам магазина. Верни СТРОГО JSON без markdown: {"sections":[{"name":"🥬 Овощи и фрукты","items":[{"name":"Огурец","qty":"5 шт"}]}]}. Отделы: 🥬 Овощи и фрукты, 🥩 Мясо и рыба, 🥛 Молочное и яйца, 🥖 Бакалея и хлеб, 🧊 Заморозка, 🧂 Специи и соусы, ✍️ Прочее — используй подходящие, пустые не включай. Не выдумывай продукты, которых нет в списке. Пиши по-русски.\n\nСписок:\n'+lines.join('\n');
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
-      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:2000,messages:[{role:'user',content:prompt}]})
-    });
-    if(!resp.ok){const t=await resp.text();throw new Error(resp.status+' '+t.slice(0,120));}
-    const data=await resp.json();
-    let txt=data.content[0].text.trim().replace(/^```json?/,'').replace(/```$/,'').trim();
-    const res=JSON.parse(txt);
-    const keep=(shopping.items||[]).filter(i=>i.have);
-    const manualKeys=new Set((shopping.items||[]).filter(i=>i.manual).map(i=>catKey(i.name)));
-    const items=[];let n=0;
-    (res.sections||[]).forEach(s=>(s.items||[]).forEach(it=>{
-      // добавленное вручную или из «Моих продуктов» должно пережить пересборку списка из меню
-      if(it&&it.name)items.push({id:'s'+Date.now()+'_'+(n++),name:it.name,qty:it.qty||'',have:false,done:false,manual:manualKeys.has(catKey(it.name)),section:s.name||''});
-    }));
-    if(!items.length)throw new Error('пустой ответ');
-    shopping.items=[...items,...keep];LS.set('shopping',shopping);rememberAll(items);renderShopping();
-    toast('Разложено по отделам ✓');
+    const res=await askHaiku('Разложи продукты по отделам магазина. Верни СТРОГО JSON без markdown: {"items":[{"name":"точно как в списке","section":"🥛 Молочное и яйца"}]}. '+SECTIONS_PROMPT+' Для каждого продукта из списка — ровно один отдел. Пиши названия ровно как в списке.\n\nСписок:\n'+todo.map(([,c])=>c.name).join('\n'),3000);
+    let n=0;
+    (res.items||[]).forEach(it=>{const c=catalog[catKey(it.name)];if(c&&it.section&&SECTION_ORDER.includes(it.section)){c.section=it.section;n++;}});
+    LS.set('catalog',catalog);refreshProducts();
+    toast('Разложено: '+n+' ✓');
   }catch(err){toast('Не получилось: '+err.message);}
   finally{btn.disabled=false;btn.innerHTML=orig;}
-}
-function addManualItem(){
-  const v=$('#newItem').value.trim();if(!v)return;
-  shopping.items=shopping.items||[];
-  const c=catalog[catKey(v)];
-  if(c&&!(listEntry(catKey(v))&&!listEntry(catKey(v)).have)){toggleFromCatalog(catKey(v));}
-  else if(!c){
-    shopping.items.push({id:'s'+Date.now(),name:v,qty:'',have:false,done:false,manual:true,section:'✍️ Своё'});
-    remember({name:v,section:'',qty:''});
-  }
-  $('#newItem').value='';LS.set('shopping',shopping);renderNewItemSugg();renderShopping();
 }
 
 /* ---------------- STOCK: заготовки (факт) и продукты дома ---------------- */
@@ -1495,13 +1584,13 @@ function openPantryView(p){
     });
     b.appendChild(list);
   }
-  const ed=el('button','btn ghost','✏️ Редактировать');ed.style.marginTop='24px';ed.onclick=()=>openPantryEditor(p);
-  const done=el('button','btn ghost','✔ Закончилось — убрать из запасов');done.style.cssText='margin-top:10px;color:#c0392b';
-  done.onclick=()=>{
-    pantry=pantry.filter(x=>x.id!==p.id);cleanupPhoto(p.photoId);
-    savePantry();closeSheet();renderStock();renderRecipes();toast('Убрано');
-  };
-  b.append(ed,done);
+  const toBuy=el('button','btn primary','Закончилось → 🛒 купить');toBuy.style.marginTop='24px';
+  toBuy.onclick=()=>{closeSheet();finishHome(p,true);};
+  const gone=el('button','btn ghost','Закончилось → пока не нужно');gone.style.marginTop='10px';
+  gone.onclick=()=>{closeSheet();finishHome(p,false);};
+  const ed=el('button','btn ghost','✏️ Редактировать');ed.style.marginTop='10px';ed.onclick=()=>openPantryEditor(p);
+  b.append(toBuy,gone,ed);
+  b.appendChild(el('div','hint','Продукт останется в «⭐ Все» — заново вводить не придётся.')).style.marginTop='8px';
   openSheet();
 }
 function openPantryEditor(item){
@@ -1575,13 +1664,9 @@ function openPantryEditor(item){
     toast('Сохранено ✓');
   };
   if(item){
-    const del=el('button','btn ghost','✔ Закончилось — убрать из запасов');
+    const del=el('button','btn ghost','🗑 Убрать из «Дома»');
     del.style.cssText='margin-top:10px;color:#c0392b';
-    del.onclick=()=>{
-      pantry=pantry.filter(x=>x.id!==item.id);
-      cleanupPhoto(item.photoId);
-      savePantry();closeSheet();renderStock();renderRecipes();toast('Убрано');
-    };
+    del.onclick=()=>{closeSheet();finishHome(item,false);};
     b.appendChild(del);
   }
   openSheet();
@@ -1806,52 +1891,70 @@ function renderStock(){
     c1.appendChild(row);
   });
   box.appendChild(c1);
+  box.appendChild(el('div','hint','Продукты, которые лежат дома, теперь во вкладке «Продукты» → «🏠 Дома».')).style.marginTop='10px';
+  renderHome();
+}
 
-  /* --- продукты дома --- */
-  const c2=el('div','slot');
-  c2.appendChild(el('div','lab',`<span>🥬 Продукты дома</span><span>${pantry.length}</span>`));
-  if(!pantry.length){
-    c2.appendChild(el('div','hint','Добавьте, что лежит в холодильнике и шкафу, — приложение подскажет рецепты из ваших продуктов и не станет заносить их в список покупок.'));
+/* --- 🏠 Дома: продукты, которые лежат дома (бывшие «Запасы») --- */
+function homeRow(p){
+  const n=recipes.filter(r=>(r.ingredients||[]).some(i=>nameMatch(p.name,ingObj(i).name))).length;
+  const row=el('div','strow');
+  if(p.photoId&&photosCache[p.photoId]){
+    const th=el('img','pth');th.src=photosCache[p.photoId];th.onclick=()=>openPhotoView(p.photoId);
+    row.appendChild(th);
   }
-  // сверху: «скоро испортится», потом залежавшиеся, потом самые старые
-  const sorted=pantry.slice().sort((a,b2)=>
-    (b2.urgent?1:0)-(a.urgent?1:0)||(pantryStale(b2)?1:0)-(pantryStale(a)?1:0)||(pantryAge(b2)??-1)-(pantryAge(a)??-1)||a.name.localeCompare(b2.name,'ru'));
-  sorted.forEach(p=>{
-    const n=recipes.filter(r=>(r.ingredients||[]).some(i=>nameMatch(p.name,ingObj(i).name))).length;
-    const row=el('div','strow');
-    if(p.photoId&&photosCache[p.photoId]){
-      const th=el('img','pth');th.src=photosCache[p.photoId];th.onclick=()=>openPhotoView(p.photoId);
-      row.appendChild(th);
-    }
-    const age=pantryAge(p), stale=pantryStale(p);
-    const since=p.since?'с '+fmtDate(p.since)+' ('+ageText(age)+')':'дата не указана';
-    const sub=[p.qty,p.place?PLACES[p.place]:'',since,n?'в '+n+' рецепт.':'пока не в рецептах'].filter(Boolean).join(' · ');
-    const badge=p.urgent?'<span class="urg">⏳ скоро</span>':(stale?'<span class="urg">🕰 давно лежит</span>':'');
-    const tx=el('div','tx',`<div class="nm">${esc(p.name)}${badge}</div><div class="sub">${esc(sub)}</div>`);
-    tx.onclick=()=>openPantryView(p);
-    row.appendChild(tx);
-    c2.appendChild(row);
-  });
-  const phb=el('button','btn primary','📷 Добавить по фото');phb.style.marginTop='12px';phb.onclick=openPantryPhotos;
-  c2.appendChild(phb);
-  c2.appendChild(el('div','hint','Сфотографируйте полку или продукт — ИИ сам напишет названия, вы проверите. Можно выбрать несколько фото сразу.'));
-  const quick=el('div','search');quick.style.marginTop='10px';
-  const qi=el('input');qi.placeholder='Быстро добавить продукт…';
+  const age=pantryAge(p), stale=pantryStale(p);
+  const since=p.since?'с '+fmtDate(p.since)+' ('+ageText(age)+')':'дата не указана';
+  const sub=[p.qty,since,n?'в '+n+' рецепт.':''].filter(Boolean).join(' · ');
+  const badge=p.urgent?'<span class="urg">⏳ скоро</span>':(stale?'<span class="urg">🕰 давно лежит</span>':'');
+  const tx=el('div','tx',`<div class="nm">${esc(p.name)}${badge}</div><div class="sub">${esc(sub)}</div>`);
+  tx.onclick=()=>openPantryView(p);
+  row.appendChild(tx);
+  const k=catKey(p.name);
+  const buy=el('button','qbtn'+(listEntry(k)?' on':''),'🛒');
+  buy.title=listEntry(k)?'Уже в «Купить»':'Заканчивается — добавить в «Купить»';
+  buy.onclick=e=>{e.stopPropagation();if(!catalog[k])remember({name:p.name,qty:p.qty,place:p.place});toggleBuy(k);};
+  row.appendChild(buy);
+  return row;
+}
+function renderHome(){
+  const box=$('#homeBody');if(!box)return;box.innerHTML='';
+  if(!pantry.length){
+    box.appendChild(el('div','empty','<div class="big">🏠</div>Дома пока ничего не отмечено.<div class="hint" style="margin-top:6px">Добавьте, что лежит в холодильнике и шкафу: приложение подскажет рецепты из ваших продуктов и не станет заносить их в «Купить». Купленное в магазине попадает сюда само.</div>'));
+  }
+  const order=(a,b2)=>(b2.urgent?1:0)-(a.urgent?1:0)||(pantryStale(b2)?1:0)-(pantryStale(a)?1:0)||(pantryAge(b2)??-1)-(pantryAge(a)??-1)||a.name.localeCompare(b2.name,'ru');
+  const first=pantry.filter(pantryUseFirst).sort(order);
+  const rest=pantry.filter(p=>!pantryUseFirst(p));
+  const card=(title,list)=>{
+    if(!list.length)return;
+    const c=el('div','slot');
+    c.appendChild(el('div','lab','<span>'+esc(title)+'</span><span>'+list.length+'</span>'));
+    list.forEach(p=>c.appendChild(homeRow(p)));
+    box.appendChild(c);
+  };
+  card('⏳ Использовать в первую очередь',first);
+  [['fridge',PLACES.fridge],['freezer',PLACES.freezer],['shelf',PLACES.shelf],['','📦 Место не указано']]
+    .forEach(([pl,t])=>card(t,rest.filter(p=>(p.place||'')===pl).sort(order)));
+  if(pantry.length)box.appendChild(el('div','hint','Тап по продукту — подробно и «Закончилось». 🛒 — заканчивается, добавить в «Купить».')).style.margin='-4px 0 12px';
+  const phb=el('button','btn primary','📷 Добавить по фото');phb.onclick=openPantryPhotos;
+  box.appendChild(phb);
+  box.appendChild(el('div','hint','Сфотографируйте полку или продукт — ИИ сам напишет названия, вы проверите.')).style.marginTop='6px';
+  const quick=el('div','search');quick.style.marginTop='12px';
+  const qi=el('input');qi.placeholder='Быстро добавить: что есть дома…';
   const qb=el('button','btn sm primary','＋');qb.style.flex='0 0 auto';
   const addQuick=()=>{
     const v=qi.value.trim();if(!v)return;
-    pantry.push({id:'p'+Date.now(),name:v,qty:'',place:'',urgent:false,since:isoDate(new Date())});
-    savePantry();renderStock();renderRecipes();
+    const k=catKey(v),ex=homeEntry(k),c=catalog[k];
+    if(ex)ex.since=isoDate(new Date());
+    else pantry.push({id:'p'+Date.now(),name:c?c.name:v,qty:c?c.qty||'':'',place:c?(c.place||SECTION_PLACE[c.section]||''):'',urgent:false,since:isoDate(new Date())});
+    savePantry();refreshProducts();
   };
   qb.onclick=addQuick;qi.onkeydown=e=>{if(e.key==='Enter')addQuick();};
-  quick.append(qi,qb);c2.appendChild(quick);
+  quick.append(qi,qb);box.appendChild(quick);
   const bulk=el('button','btn ghost','📝 Добавить списком');bulk.style.marginTop='10px';bulk.onclick=openPantryBulk;
-  c2.appendChild(bulk);
-  box.appendChild(c2);
-
-  const ideas=el('button','btn green','🍽 Что приготовить из запасов');ideas.onclick=openIdeas;
+  box.appendChild(bulk);
+  const ideas=el('button','btn green','🍽 Что приготовить из того, что дома');ideas.style.marginTop='10px';ideas.onclick=openIdeas;
   box.appendChild(ideas);
-  box.appendChild(el('div','hint','Количество продуктов приложение не списывает: когда что-то закончилось — откройте продукт и нажмите «Закончилось». Заготовки же считаются по порциям автоматически.')).style.marginTop='10px';
 }
 
 /* ---------------- PROFILE ---------------- */
@@ -1917,11 +2020,11 @@ function switchTab(tab){
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   $('#view-'+tab).classList.add('active');
   document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
-  const titles={recipes:['Мои Рецепты','Ваша личная книга рецептов'],menu:['Меню недели','Собирайте меню из своих рецептов'],shop:['Покупки','Список продуктов из меню недели'],stock:['Запасы','Что есть дома: заготовки и продукты'],me:['Я и цель','Норма калорий и настройки']};
+  const titles={recipes:['Мои Рецепты','Ваша личная книга рецептов'],menu:['Меню недели','Собирайте меню из своих рецептов'],shop:['Продукты','Что купить и что есть дома'],stock:['Заготовки','Что приготовлено впрок'],me:['Я и цель','Норма калорий и настройки']};
   $('#topTitle').textContent=titles[tab][0];$('#topSub').textContent=titles[tab][1];
   $('#fab').style.display=tab==='recipes'?'flex':'none';
   if(tab==='menu')refreshMenu();
-  if(tab==='shop'){renderShopping();if(shopMode==='cat')renderCatalog();}
+  if(tab==='shop')refreshProducts();
   if(tab==='stock')renderStock();
 }
 document.querySelectorAll('nav.tabs button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
@@ -1956,14 +2059,17 @@ $('#aiShop').onclick=aiOrganizeShopping;
 $('#addItem').onclick=addManualItem;
 $('#newItem').onkeydown=e=>{if(e.key==='Enter')addManualItem();};
 $('#newItem').oninput=renderNewItemSugg;
-document.querySelectorAll('#shopSeg button').forEach(b=>b.onclick=()=>{shopMode=b.dataset.m;renderShopSeg();if(shopMode==='cat')renderCatalog();else renderShopping();});
-$('#clearDone').onclick=()=>{shopping.items=(shopping.items||[]).filter(i=>!i.done);LS.set('shopping',shopping);renderShopping();toast('Купленное убрано — оно осталось в «Моих продуктах»');};
+document.querySelectorAll('#shopSeg button').forEach(b=>b.onclick=()=>{shopMode=b.dataset.m;refreshProducts();window.scrollTo(0,0);});
 $('#catSearch').oninput=renderCatalog;
 $('#catSearch').onkeydown=e=>{if(e.key==='Enter')$('#catAdd').click();};
 $('#catAdd').onclick=()=>{
   const v=$('#catSearch').value.trim();if(!v)return;
-  addToCatalogAndList(v);$('#catSearch').value='';renderCatalog();toast('Добавлено в список ✓');
+  const k=catKey(v);
+  if(!catalog[k])remember({name:v,section:'',qty:''});
+  addBuy(k);$('#catSearch').value='';refreshProducts();toast('«'+catalog[k].name+'» → 🛒 Купить');
 };
+$('#aiCat').onclick=aiCategorizeCatalog;
+$('#undoBtn').onclick=()=>{const f=undoFn;undoFn=null;$('#undo').style.display='none';if(f)f();};
 $('#saveProfile').onclick=saveProfile;
 $('#syncSave').onclick=()=>{
   const c=syncCfg();
@@ -2132,7 +2238,7 @@ function renderSync(){
 }
 /* ---------------- версия и обновление ----------------
    APP_VERSION нужно менять при каждой публикации: по нему телефон узнаёт, что на сайте есть новее. */
-const APP_VERSION='2026-10-26 · 4';
+const APP_VERSION='2026-10-26 · 5';
 let updLastCheck=0;
 async function siteVersion(){
   const t=await fetch('index.html?check='+Date.now(),{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);return r.text();});
@@ -2170,7 +2276,11 @@ async function init(){
   photosCache=await photosAll();
   profile=LS.get('profile',{});
   LS.set('people',people);saveMenus();   // закрепить дефолт/миграцию
-  if(!Object.keys(catalog).length&&(shopping.items||[]).length)rememberAll(shopping.items);   // первый запуск каталога: берём текущий список
+  // переход на «Продукты»: старые зачёркнутые покупки больше не нужны, всё, что в списке и дома, — в «мои продукты»
+  if((shopping.items||[]).some(i=>i.done)){shopping.items=shopping.items.filter(i=>!i.done);LS.set('shopping',shopping);}
+  (shopping.items||[]).forEach(i=>remember(i,true));
+  pantry.forEach(p=>remember({name:p.name,qty:p.qty,place:p.place},true));
+  LS.set('catalog',catalog);
   const jsDay=(new Date().getDay()+6)%7;activeDay=jsDay; // Mon=0
   renderRecipes();renderProfile();renderPeople();updateRecCount();refreshMenu();renderShopping();renderStock();renderSync();
   syncQuiet=false;
