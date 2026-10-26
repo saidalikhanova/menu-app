@@ -881,11 +881,15 @@ function dayKey(i){return 'd'+i;}
 const MONTHS_G=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
 function weekDate(i){const [y,m,d]=activeWeek.split('-').map(Number);return new Date(y,m-1,d+i);}
 function shiftWeek(n){const [y,m,d]=activeWeek.split('-').map(Number);activeWeek=weekKeyOf(new Date(y,m-1,d+7*n));refreshMenu();}
-function renderWeekNav(){
-  const a=weekDate(0),b=weekDate(6);
-  $('#wLabel').textContent=a.getMonth()===b.getMonth()
+function weekLabel(wk){
+  const [y,m,d]=(wk||activeWeek).split('-').map(Number);
+  const a=new Date(y,m-1,d),b=new Date(y,m-1,d+6);
+  return a.getMonth()===b.getMonth()
     ?a.getDate()+' – '+b.getDate()+' '+MONTHS_G[b.getMonth()]
     :a.getDate()+' '+MONTHS_G[a.getMonth()]+' – '+b.getDate()+' '+MONTHS_G[b.getMonth()];
+}
+function renderWeekNav(){
+  $('#wLabel').textContent=weekLabel();
   const cur=weekKeyOf(new Date());
   const diff=Math.round((weekDate(0)-mondayOf(new Date()))/(7*24*3600*1000));
   const sub=$('#wSub');
@@ -1142,7 +1146,7 @@ function buildShopping(){
     return {id:'s'+Date.now()+'_'+i,name:it.name,qty:it.qtys.filter(Boolean).join(' + '),have:!!p,stock:p?(p.qty||'есть'):'',done:false,manual:false,section:''};
   });
   const manual=(shopping.items||[]).filter(x=>x.manual&&!x.done);
-  shopping={items:[...items,...manual],created:Date.now()};
+  shopping={items:[...items,...manual],created:Date.now(),week:activeWeek};
   LS.set('shopping',shopping);rememberAll(items);renderShopping();
   const home=items.filter(i=>i.have).length;
   toast(items.length?'Список собран: '+items.length+' поз.'+(home?', '+home+' уже дома':'')+' ✓':'В меню недели пока нет блюд');
@@ -1260,6 +1264,12 @@ function renderShopping(){
   const box=$('#shopList');if(!box)return;box.innerHTML='';
   const items=shopping.items||[];
   renderShopSeg();
+  $('#buildShop').textContent='🛒 Собрать список на '+weekLabel();
+  if(shopping.week&&items.length){
+    const other=shopping.week!==activeWeek;
+    const note=el('div','hint',(other?'⚠️ ':'')+'Список собран для недели '+weekLabel(shopping.week)+(other?'. Сейчас в «Меню» выбрана другая неделя — соберите заново, если нужно.':'.'));
+    note.style.margin='0 0 10px';box.appendChild(note);
+  }
   $('#clearDone').style.display=items.some(i=>i.done)?'flex':'none';
   $('#aiShop').style.display=(items.some(i=>!i.have)&&LS.get('apiKey',''))?'flex':'none';
   if(!items.length){
@@ -2122,7 +2132,7 @@ function renderSync(){
 }
 /* ---------------- версия и обновление ----------------
    APP_VERSION нужно менять при каждой публикации: по нему телефон узнаёт, что на сайте есть новее. */
-const APP_VERSION='2026-10-26 · 3';
+const APP_VERSION='2026-10-26 · 4';
 let updLastCheck=0;
 async function siteVersion(){
   const t=await fetch('index.html?check='+Date.now(),{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);return r.text();});
