@@ -528,7 +528,7 @@ let activeDay=0;                        // 0=Пн
 let curTag=null, curPerson=null, curSearch='', curPrepFilter=false, curPantryFilter=false;
 let editingId=null, draftPhoto=null, draftPeople=[], draftIngs=[], draftPrep=false;
 const DOW=['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
-const SLOTS=[['breakfast','Завтрак','🌅'],['lunch','Обед','🍲'],['dinner','Ужин','🌙'],['snack','Перекус','🍎']];
+const SLOTS=[['breakfast','Завтрак','🌅'],['lunch','Обед','🍲'],['dinner','Ужин','🌙'],['snack','Перекус','🍎'],['dessert','Десерт','🍰']];
 let shopping=LS.get('shopping',{items:[]});
 let catalog=LS.get('catalog',{});   // «Мои продукты»: ключ (имя в нижнем регистре) → {name,section,qty,count,last}
 let shopMode='buy';
@@ -1061,10 +1061,11 @@ function openPicker(slotKey){
   const pri=forAll
     ?r=>((r.people||[]).length?1:0)                                            // в режиме «Все»: сначала блюда «для всех»
     :r=>{const pp=r.people||[];return pp.includes(activePerson)?0:(pp.length?2:1);}; // свои → для всех → чужие
+  const sweet=r=>slotKey==='dessert'&&(r.tags||[]).some(t=>/десерт/i.test(t))?1:0;   // при выборе десерта — сначала десерты
   const draw=()=>{
     list.innerHTML='';const q=si.value.toLowerCase();
     const items=recipes.filter(r=>!q||r.name.toLowerCase().includes(q)||(r.ingredients||[]).some(i=>ingText(i).toLowerCase().includes(q)))
-      .sort((a,b)=>pri(a)-pri(b)||(pantry.length?pantryScore(b)-pantryScore(a):0)||b.created-a.created);
+      .sort((a,b)=>sweet(b)-sweet(a)||pri(a)-pri(b)||(pantry.length?pantryScore(b)-pantryScore(a):0)||b.created-a.created);
     if(!items.length){list.appendChild(el('div','empty','Нет рецептов. Сначала добавьте их во вкладке «Рецепты».'));return;}
     items.forEach(r=>{
       const pi=el('div','pi');const im=r.photo?el('img'):el('div','noimg','🍲');if(r.photo)im.src=r.photo;
@@ -1097,7 +1098,9 @@ function autoBuild(){
   const mm=wm()[activePerson]||{};
   for(let i=0;i<7;i++){
     const m={};const used=new Set();
-    SLOTS.forEach(([k])=>{
+    const oldDessert=(mm[dayKey(i)]||{}).dessert;
+    if(oldDessert)m.dessert=oldDessert;   // десерты авто-сборка не подбирает и не стирает
+    SLOTS.filter(([k])=>k!=='dessert').forEach(([k])=>{
       let cand=pool.filter(r=>!used.has(r.id));if(!cand.length)cand=pool;
       let pick;
       if(budget){
@@ -2196,7 +2199,7 @@ function renderSync(){
 }
 /* ---------------- версия и обновление ----------------
    APP_VERSION нужно менять при каждой публикации: по нему телефон узнаёт, что на сайте есть новее. */
-const APP_VERSION='2026-10-26 · 7';
+const APP_VERSION='2026-10-30 · 1';
 let updLastCheck=0;
 async function siteVersion(){
   const t=await fetch('index.html?check='+Date.now(),{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);return r.text();});
