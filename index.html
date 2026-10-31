@@ -1243,12 +1243,60 @@ function finishHome(p,toBuy){
   toast(toBuy?'«'+p.name+'» → 🛒 Купить':'«'+p.name+'» закончился');
 }
 
+/* --- ✏️ правка продукта: название одно на «Купить», «Дома» и «⭐ Все» --- */
+function mergeOk(k,name){
+  const nk=catKey(name);
+  return nk===k||!catalog[nk]||confirm('«'+catalog[nk].name+'» уже есть в ваших продуктах. Объединить с ним?');
+}
+function renameProduct(k,name){
+  const nk=catKey(name),old=catalog[k]||{name,section:'',qty:'',count:0,last:null},ex=nk!==k?catalog[nk]:null;
+  if(nk!==k&&listEntry(nk))shopping.items=shopping.items.filter(i=>i.have||catKey(i.name)!==k);
+  (shopping.items||[]).filter(i=>catKey(i.name)===k).forEach(i=>{i.name=name;if(!i.have)i.manual=true;});   // manual: иначе новая сборка из меню сотрёт правку
+  if(nk!==k&&homeEntry(nk)){
+    const gone=pantry.filter(p=>catKey(p.name)===k);
+    pantry=pantry.filter(p=>catKey(p.name)!==k);
+    gone.forEach(p=>cleanupPhoto(p.photoId));
+  }else pantry.filter(p=>catKey(p.name)===k).forEach(p=>{p.name=name;});
+  delete catalog[k];
+  if(ex){ex.count=(ex.count||0)+(old.count||0);if((old.last||'')>(ex.last||''))ex.last=old.last;}
+  else catalog[nk]={...old,name,section:old.section||guessSection(name)};
+  saveShop();savePantry();
+}
+function openProductEditor(k,name,qty){
+  $('#sheetTitle').textContent='Изменить продукт';
+  const b=$('#sheetBody');
+  b.innerHTML=`<label class="f">Название</label>
+    <input class="t" id="eName" value="${esc(name)}">
+    <label class="f">Сколько <span style="font-weight:400">(необязательно)</span></label>
+    <input class="t" id="eQty" placeholder="200 г / 1 пачка" value="${esc(qty||'')}">
+    <div class="hint" style="margin-top:8px">Новое название появится и в «🛒 Купить», и в «🏠 Дома», и в «⭐ Все».</div>
+    <button class="btn primary" id="eSave" style="margin-top:22px">Сохранить</button>`;
+  $('#eSave').onclick=()=>{
+    const v=$('#eName').value.trim(),q=$('#eQty').value.trim();
+    if(!v){toast('Введите название');return;}
+    if(!mergeOk(k,v))return;
+    renameProduct(k,v);
+    const nk=catKey(v),it=listEntry(nk);
+    if(it){it.qty=q;saveShop();}
+    catalog[nk].qty=plainQty(q);LS.set('catalog',catalog);
+    closeSheet();refreshProducts();
+    toast('Сохранено ✓');
+  };
+  openSheet();
+}
+function editBtn(k,name,qty){
+  const b=el('button','hbtn','✏️');b.title='Изменить название и количество';
+  b.onclick=e=>{e.stopPropagation();openProductEditor(k,name,qty);};
+  return b;
+}
+
 /* --- 🛒 Купить --- */
 function buyRow(i){
   const k=catKey(i.name);
   const row=el('div','catrow');
   row.appendChild(el('div','ck',''));
   row.appendChild(el('div','tx',esc(i.name)+(i.qty?' <span class="q">'+esc(i.qty)+'</span>':'')));
+  row.appendChild(editBtn(k,i.name,i.qty));
   const del=el('button','hbtn','×');del.title='Не покупать';
   del.onclick=e=>{e.stopPropagation();removeBuy(k);refreshProducts();};
   row.appendChild(del);
@@ -1272,7 +1320,7 @@ function renderShopping(){
       bySec[sec].forEach(i=>card.appendChild(buyRow(i)));
       box.appendChild(card);
     });
-    box.appendChild(el('div','hint','Тап по продукту — купила (уйдёт в «🏠 Дома»). × — не покупать.')).style.margin='-4px 0 12px';
+    box.appendChild(el('div','hint','Тап по продукту — купила (уйдёт в «🏠 Дома»). ✏️ — изменить название. × — не покупать.')).style.margin='-4px 0 12px';
   }
 
 }
@@ -1341,6 +1389,7 @@ function catRow(k,c){
   const sub=[c.qty,c.count?'брала '+c.count+' раз':''].filter(Boolean).join(' · ');
   row.appendChild(el('div','tx',esc(c.name)+(sub?' <span class="q">'+esc(sub)+'</span>':'')));
   row.appendChild(el('div','st',(atHome?'🏠':'')+(inBuy?'🛒':'')));
+  row.appendChild(editBtn(k,c.name,listEntry(k)?listEntry(k).qty:c.qty));
   const del=el('button','hbtn','×');del.title='Убрать из моих продуктов';
   del.onclick=e=>{
     e.stopPropagation();
@@ -1619,13 +1668,16 @@ function openPantryEditor(item){
   $('#pSave').onclick=async()=>{
     const name=$('#pName').value.trim();
     if(!name){toast('Введите название');return;}
+    const oldKey=item?catKey(item.name):'';
+    if(item&&!mergeOk(oldKey,name))return;
+    if(item&&catKey(name)!==oldKey)renameProduct(oldKey,name);
     const oldPhotoId=item?item.photoId||null:null;
     let finalPhotoId=photoId;
     if(newPhoto){finalPhotoId='ph'+Date.now();photosCache[finalPhotoId]=newPhoto;await photoPut(finalPhotoId,newPhoto);}
     const data={name,qty:$('#pQty').value.trim(),place,urgent,photoId:finalPhotoId,since:$('#pSince').value||null};
     if(item)Object.assign(item,data);else pantry.push({id:'p'+Date.now(),...data});
     if(oldPhotoId&&oldPhotoId!==finalPhotoId)cleanupPhoto(oldPhotoId);
-    savePantry();closeSheet();renderStock();renderRecipes();
+    savePantry();closeSheet();renderStock();refreshProducts();
     toast('Сохранено ✓');
   };
   if(item){
@@ -2199,7 +2251,7 @@ function renderSync(){
 }
 /* ---------------- версия и обновление ----------------
    APP_VERSION нужно менять при каждой публикации: по нему телефон узнаёт, что на сайте есть новее. */
-const APP_VERSION='2026-10-30 · 1';
+const APP_VERSION='2026-10-31 · 1';
 let updLastCheck=0;
 async function siteVersion(){
   const t=await fetch('index.html?check='+Date.now(),{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);return r.text();});
