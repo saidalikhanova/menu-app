@@ -1722,8 +1722,17 @@ function openPantryBulk(){
   openSheet();
 }
 /* ---- продукты по фото: ИИ называет, вы проверяете, фото сохраняется ---- */
-async function recognizeProducts(photo,key){
-  const prompt='На фото продукты питания, которые есть у меня дома (полка холодильника, морозилка, шкаф, стол или одна упаковка). '
+const RECEIPT_PROMPT='На фото кассовый чек из магазина (может быть на испанском, английском или другом языке, может быть снят частично). '
+    +'Выпиши купленные продукты питания и напитки. Верни СТРОГО JSON без markdown и пояснений:\n'
+    +'{"items":[{"name":"Творог","qty":"500 г","place":"fridge","urgent":false}]}\n'
+    +'Правила:\n'
+    +'- "name": переведи сокращения чека в простое общее название по-русски с заглавной буквы, как в кулинарных рецептах («Творог», «Куриное филе», «Брокколи замороженная», «Гречка»). Без брендов, артикулов и количества. Если строку никак не понять — перепиши её как есть.\n'
+    +'- "qty": сколько куплено, если видно в чеке («0,8 кг», «2 шт», «1 л», «500 г»); если неясно — пустая строка. Цены не пиши.\n'
+    +'- "place": где это обычно хранят: "fridge" (холодильник), "freezer" (заморозка), "shelf" (шкаф: крупы, консервы, хлеб, овощи вне холодильника), иначе пустая строка.\n'
+    +'- "urgent": всегда false.\n'
+    +'- Пропусти всё, что не еда: пакеты, бытовую химию, косметику, скидки, итоги, налоги, способ оплаты. Одинаковые строки объедини и сложи количество. Не выдумывай то, чего нет в чеке. Если еды в чеке нет — верни {"items":[]}.';
+async function recognizeProducts(photo,key,receipt){
+  const prompt=receipt?RECEIPT_PROMPT:'На фото продукты питания, которые есть у меня дома (полка холодильника, морозилка, шкаф, стол или одна упаковка). '
     +'Перечисли отдельные продукты, которые видно. Верни СТРОГО JSON без markdown и пояснений:\n'
     +'{"items":[{"name":"Творог","qty":"400 г","place":"fridge","urgent":false}]}\n'
     +'Правила:\n'
@@ -1735,7 +1744,7 @@ async function recognizeProducts(photo,key){
   const resp=await fetch('https://api.anthropic.com/v1/messages',{
     method:'POST',
     headers:{'x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true','content-type':'application/json'},
-    body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:1500,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:photo.split(',')[1]}},{type:'text',text:prompt}]}]})
+    body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:receipt?3000:1500,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data:photo.split(',')[1]}},{type:'text',text:prompt}]}]})
   });
   if(!resp.ok){const t=await resp.text();throw new Error(resp.status+' '+t.slice(0,120));}
   const data=await resp.json();
@@ -1748,46 +1757,52 @@ async function recognizeProducts(photo,key){
     urgent:!!it.urgent,
   }));
 }
-function openPantryPhotos(){
+/* receipt=true — фото чека: продукты без фото, купленное вычёркивается из «Купить» */
+function openPantryPhotos(receipt){
   const key=LS.get('apiKey','');
   if(!key){toast('Сначала вставьте API-ключ во вкладке «Я»');return;}
   const inp=document.createElement('input');inp.type='file';inp.accept='image/*';inp.multiple=true;
-  inp.onchange=e=>processPantryFiles([...e.target.files].slice(0,6));
+  inp.onchange=e=>processPantryFiles([...e.target.files].slice(0,6),receipt);
   inp.click();
 }
-async function processPantryFiles(files){
+async function processPantryFiles(files,receipt){
   if(!files.length)return;
   const key=LS.get('apiKey','');
-  $('#sheetTitle').textContent='Распознаю продукты';
+  $('#sheetTitle').textContent=receipt?'Читаю чек':'Распознаю продукты';
   $('#sheetBody').innerHTML='<div class="empty"><span class="spinner" style="border-color:rgba(0,0,0,.15);border-top-color:var(--accent)"></span><div id="phProg" style="margin-top:12px"></div></div>';
   openSheet();
   const groups=[];
   for(let i=0;i<files.length;i++){
-    const pr=$('#phProg');if(pr)pr.textContent='Распознаю фото '+(i+1)+' из '+files.length+'…';
-    const photo=await fileToPhotoSized(files[i],800,0.7);
+    const pr=$('#phProg');if(pr)pr.textContent=(receipt?'Читаю фото чека ':'Распознаю фото ')+(i+1)+' из '+files.length+'…';
+    const photo=await fileToPhotoSized(files[i],receipt?1600:800,receipt?0.85:0.7);   // мелкий текст чека нужен крупнее
     if(!photo){groups.push({id:null,photo:null,items:[],err:'не удалось открыть фото'});continue;}
     try{
-      const items=await recognizeProducts(photo,key);
-      groups.push({id:'ph'+Date.now()+'_'+i,photo,items,err:null});
+      const items=await recognizeProducts(photo,key,receipt);
+      groups.push({id:receipt?null:'ph'+Date.now()+'_'+i,photo,items,err:null});
     }catch(err){
       groups.push({id:null,photo,items:[],err:err.message});
     }
   }
-  openPantryReview(groups);
+  openPantryReview(groups,receipt);
 }
-function openPantryReview(groups){
-  $('#sheetTitle').textContent='Найденные продукты';
+function openPantryReview(groups,receipt){
+  $('#sheetTitle').textContent=receipt?'Продукты из чека':'Найденные продукты';
   const b=$('#sheetBody');b.innerHTML='';
   const total=groups.reduce((s,g)=>s+g.items.length,0);
   const errs=groups.filter(g=>g.err).map(g=>g.err);
   if(!total){
-    b.appendChild(el('div','empty','<div class="big">🤷</div>Продукты на фото не нашлись.<div class="hint" style="margin-top:6px">Снимите ближе и при хорошем свете, лучше по одной полке.'+(errs.length?'<br><br>Ошибка: '+esc(errs[0]):'')+'</div>'));
+    b.appendChild(el('div','empty','<div class="big">🤷</div>'+(receipt?'Продукты в чеке не нашлись.':'Продукты на фото не нашлись.')+'<div class="hint" style="margin-top:6px">'+(receipt?'Снимите чек ровно и при хорошем свете, чтобы буквы были чёткими. Длинный чек — по частям, 2–3 фото.':'Снимите ближе и при хорошем свете, лучше по одной полке.')+(errs.length?'<br><br>Ошибка: '+esc(errs[0]):'')+'</div>'));
     openSheet();return;
   }
-  b.appendChild(el('div','hint','Проверьте названия и количество, уберите галочки с лишнего. Фото сохранится у добавленных продуктов.'));
-  let globalPlace=null;
+  b.appendChild(el('div','hint',receipt?'Проверьте названия и количество, уберите галочки с лишнего. Фото чека не сохраняется — продукты добавятся без фото.':'Проверьте названия и количество, уберите галочки с лишнего. Фото сохранится у добавленных продуктов.'));
+  let globalPlace=null;const seen=[];
   groups.forEach(g=>{
-    g.items.forEach(it=>{it.on=true;it.dup=pantry.find(p=>nameMatch(p.name,it.name))||null;if(it.dup)it.on=false;});
+    g.items.forEach(it=>{
+      it.on=true;it.dup=pantry.find(p=>nameMatch(p.name,it.name))||null;
+      if(it.dup&&!receipt)it.on=false;   // купленное по чеку — свежее, обновим дату у того, что уже дома
+      if(receipt&&seen.some(n=>nameMatch(n,it.name))){it.on=false;it.again=true;}   // части одного чека могут повторяться
+      seen.push(it.name);
+    });
     if(g.photo){
       const im=el('img');im.src=g.photo;im.style.cssText='height:92px;border-radius:12px;margin:14px 0 4px;display:block;max-width:100%;object-fit:cover';
       b.appendChild(im);
@@ -1804,7 +1819,8 @@ function openPantryReview(groups){
       const u=el('button','qbtn'+(it.urgent?' on':''),'⏳');u.type='button';u.title='Скоро испортится';
       u.onclick=()=>{it.urgent=!it.urgent;u.classList.toggle('on',it.urgent);};
       row.append(chk,n,q,u);wrap.appendChild(row);
-      if(it.dup)wrap.appendChild(el('div','hint','Уже есть в запасах («'+esc(it.dup.name)+'»). Поставьте галочку, чтобы обновить количество.'));
+      if(it.again)wrap.appendChild(el('div','hint','Повтор — этот продукт уже есть выше.'));
+      else if(it.dup)wrap.appendChild(el('div','hint',receipt?'Уже есть дома («'+esc(it.dup.name)+'») — обновлю дату покупки и количество.':'Уже есть в запасах («'+esc(it.dup.name)+'»). Поставьте галочку, чтобы обновить количество.'));
       b.appendChild(wrap);
     });
   });
@@ -1819,9 +1835,9 @@ function openPantryReview(groups){
     });
   };
   drawP();b.appendChild(pc);
-  const save=el('button','btn primary','Добавить в запасы');save.style.marginTop='20px';
+  const save=el('button','btn primary',receipt?'Добавить в «🏠 Дома»':'Добавить в запасы');save.style.marginTop='20px';
   save.onclick=async()=>{
-    let added=0,updated=0,seq=0;const usedGroups=new Set();
+    let added=0,updated=0,seq=0;const usedGroups=new Set(),bought=[],today=isoDate(new Date());
     groups.forEach(g=>g.items.forEach(it=>{
       if(!it.on)return;
       const name=(it.name||'').trim();if(!name)return;
@@ -1831,16 +1847,29 @@ function openPantryReview(groups){
         if(it.urgent)it.dup.urgent=true;
         if(place&&!it.dup.place)it.dup.place=place;
         if(!it.dup.photoId&&g.id){it.dup.photoId=g.id;usedGroups.add(g);}
+        if(receipt){it.dup.since=today;it.dup.urgent=false;bought.push(it.dup.name);}
         updated++;
       }else{
-        pantry.push({id:'p'+Date.now()+'_'+(seq++),name,qty:(it.qty||'').trim(),place,urgent:!!it.urgent,photoId:g.id||null,since:isoDate(new Date())});
+        pantry.push({id:'p'+Date.now()+'_'+(seq++),name,qty:(it.qty||'').trim(),place,urgent:!!it.urgent,photoId:g.id||null,since:today});
         if(g.id)usedGroups.add(g);
+        bought.push(name);
         added++;
       }
     }));
     for(const g of usedGroups){photosCache[g.id]=g.photo;await photoPut(g.id,g.photo);}
-    savePantry();closeSheet();renderStock();renderRecipes();
-    toast(added||updated?('Добавлено: '+added+(updated?', обновлено: '+updated:'')+' ✓'):'Ничего не выбрано');
+    savePantry();
+    let crossed=0;
+    if(receipt){   // как «купила» в магазине: счётчик покупок и вычеркнуть из «Купить»
+      bought.forEach(n=>{
+        const c=catalog[catKey(n)];if(c){c.count=(c.count||0)+1;c.last=today;}
+        const before=(shopping.items||[]).length;
+        shopping.items=(shopping.items||[]).filter(i=>i.have||!nameMatch(n,i.name));
+        crossed+=before-shopping.items.length;
+      });
+      saveShop();LS.set('catalog',catalog);
+    }
+    closeSheet();renderStock();refreshProducts();
+    toast(added||updated?('Добавлено: '+added+(updated?', обновлено: '+updated:'')+(crossed?', вычеркнуто из «Купить»: '+crossed:'')+' ✓'):'Ничего не выбрано');
   };
   b.appendChild(save);
   openSheet();
@@ -1949,9 +1978,11 @@ function renderHome(){
   [['fridge',PLACES.fridge],['freezer',PLACES.freezer],['shelf',PLACES.shelf],['','📦 Место не указано']]
     .forEach(([pl,t])=>card(t,rest.filter(p=>(p.place||'')===pl).sort(order)));
   if(pantry.length)box.appendChild(el('div','hint','Тап по продукту — подробно и «Закончилось». 🛒 — заканчивается, добавить в «Купить».')).style.margin='-4px 0 12px';
-  const phb=el('button','btn primary','📷 Добавить по фото');phb.onclick=openPantryPhotos;
+  const phb=el('button','btn primary','📷 Добавить по фото');phb.onclick=()=>openPantryPhotos(false);
   box.appendChild(phb);
-  box.appendChild(el('div','hint','Сфотографируйте полку или продукт — ИИ сам напишет названия, вы проверите.')).style.marginTop='6px';
+  const rcb=el('button','btn ghost','🧾 Добавить по чеку');rcb.style.marginTop='10px';rcb.onclick=()=>openPantryPhotos(true);
+  box.appendChild(rcb);
+  box.appendChild(el('div','hint','Сфотографируйте полку, продукт или чек из магазина — ИИ сам напишет названия, вы проверите. По чеку продукты добавятся без фото.')).style.marginTop='6px';
   const quick=el('div','search');quick.style.marginTop='12px';
   const qi=el('input');qi.placeholder='Быстро добавить: что есть дома…';
   const qb=el('button','btn sm primary','＋');qb.style.flex='0 0 auto';
@@ -2251,7 +2282,7 @@ function renderSync(){
 }
 /* ---------------- версия и обновление ----------------
    APP_VERSION нужно менять при каждой публикации: по нему телефон узнаёт, что на сайте есть новее. */
-const APP_VERSION='2026-10-31 · 1';
+const APP_VERSION='2026-11-09 · 1';
 let updLastCheck=0;
 async function siteVersion(){
   const t=await fetch('index.html?check='+Date.now(),{cache:'no-store'}).then(r=>{if(!r.ok)throw new Error(r.status);return r.text();});
